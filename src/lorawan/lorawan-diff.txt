@@ -1,0 +1,2581 @@
+diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
+index 1a83627..ed25bcf 100644
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -21,6 +21,15 @@ build_lib_example(
+     ${liblorawan}
+ )
+ 
++build_lib_example(
++  NAME complete-network-interference
++  SOURCE_FILES complete-network-interference.cc
++  LIBRARIES_TO_LINK
++    ${libcore}
++    ${liblorawan}
++)
++
++
+ build_lib_example(
+   NAME adr-example
+   SOURCE_FILES adr-example.cc
+diff --git a/examples/complete-network-example.cc b/examples/complete-network-example.cc
+index ab05cdd..06f9e5b 100644
+--- a/examples/complete-network-example.cc
++++ b/examples/complete-network-example.cc
+@@ -62,7 +62,7 @@ main (int argc, char *argv[])
+   cmd.AddValue ("nDevices", "Number of end devices to include in the simulation", nDevices);
+   cmd.AddValue ("nGateways", "Number of gateways to include in the simulation", nGateways);
+   cmd.AddValue ("radius", "The radius of the area to simulate", radius);
+-cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime);
++  cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime);
+   cmd.AddValue ("realisticChannelModel", "Run using realistic channel model", realisticChannelModel);
+   cmd.AddValue ("packetSize", "Size of the packet to use", packetSize);
+   cmd.AddValue ("appPeriod",
+@@ -73,7 +73,10 @@ cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime
+   cmd.Parse (argc, argv);
+ 
+   // Set up logging
+-  LogComponentEnable ("ComplexLorawanNetworkExample", LOG_LEVEL_ALL);
++  // LogComponentEnable ("ComplexLorawanNetworkExample", LOG_LEVEL_ALL);
++  // LogComponentEnable ("CorrelatedShadowingPropagationLossModel", LOG_LEVEL_ALL);
++  // LogComponentEnable ("BuildingPenetrationLoss", LOG_LEVEL_ALL);
++
+   LogComponentEnable ("LoraPacketTracker", LOG_LEVEL_ALL);
+   // LogComponentEnable("LoraChannel", LOG_LEVEL_INFO);
+   // LogComponentEnable("LoraPhy", LOG_LEVEL_ALL);
+@@ -122,13 +125,13 @@ cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime
+ 
+   if (realisticChannelModel)
+     {
++      NS_LOG_INFO("HERE");
+       // Create the correlated shadowing component
+       Ptr<CorrelatedShadowingPropagationLossModel> shadowing =
+           CreateObject<CorrelatedShadowingPropagationLossModel> ();
+ 
+       // Aggregate shadowing to the logdistance loss
+       loss->SetNext (shadowing);
+-
+       // Add the effect to the channel propagation loss
+       Ptr<BuildingPenetrationLoss> buildingLoss = CreateObject<BuildingPenetrationLoss> ();
+ 
+@@ -356,13 +359,13 @@ cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime
+   NS_LOG_INFO ("Running simulation...");
+   Simulator::Run ();
+   int counter = 0;
+-  for (DeviceEnergyModelContainer::Iterator iter = deviceModels.Begin (); iter != deviceModels.End (); iter ++)
+-  {
+-    counter += 1;
+-    double energyConsumed = (*iter)->GetTotalEnergyConsumption ();
+-    NS_LOG_UNCOND ("End of simulation (" << Simulator::Now ().GetSeconds ()
+-                    << "s) Total energy consumed by node " << counter << " = " << energyConsumed << "J");
+-  }
++  // for (DeviceEnergyModelContainer::Iterator iter = deviceModels.Begin (); iter != deviceModels.End (); iter ++)
++  // {
++  //   counter += 1;
++  //   double energyConsumed = (*iter)->GetTotalEnergyConsumption ();
++  //   NS_LOG_UNCOND ("End of simulation (" << Simulator::Now ().GetSeconds ()
++  //                   << "s) Total energy consumed by node " << counter << " = " << energyConsumed << "J");
++  // }
+ 
+ 
+   Simulator::Destroy ();
+@@ -375,5 +378,24 @@ cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime
+   LoraPacketTracker &tracker = helper.GetPacketTracker ();
+   std::cout << tracker.CountMacPacketsGlobally (Seconds (0), appStopTime + Hours (1)) << std::endl;
+ 
++
++	if (true) {
++
++     std::ofstream file("lorawan_node_position.txt");
++
++		uint32_t i = 0;
++		while (i < nDevices) {
++			Ptr<MobilityModel> mobility = endDevices.Get(i)->GetObject<
++					MobilityModel>();
++			Vector position = mobility->GetPosition();
++			file << "Device " << i << ", " << "position = " << position
++					<< std::endl;
++			i++;
++		}
++
++      file.close();
++	}
++
++
+   return 0;
+ }
+diff --git a/examples/complete-network-interference.cc b/examples/complete-network-interference.cc
+new file mode 100644
+index 0000000..aea9520
+--- /dev/null
++++ b/examples/complete-network-interference.cc
+@@ -0,0 +1,576 @@
++/*
++ * This script simulates a complex scenario with multiple gateways and end
++ * devices. The metric of interest for this script is the throughput of the
++ * network.
++ */
++
++#include "ns3/end-device-lora-phy.h"
++#include "ns3/gateway-lora-phy.h"
++#include "ns3/class-a-end-device-lorawan-mac.h"
++#include "ns3/class-c-end-device-lorawan-mac.h"
++#include "ns3/gateway-lorawan-mac.h"
++#include "ns3/simulator.h"
++#include "ns3/log.h"
++#include "ns3/pointer.h"
++#include "ns3/constant-position-mobility-model.h"
++#include "ns3/lora-helper.h"
++#include "ns3/node-container.h"
++#include "ns3/mobility-helper.h"
++#include "ns3/position-allocator.h"
++#include "ns3/double.h"
++#include "ns3/random-variable-stream.h"
++#include "ns3/periodic-sender-helper.h"
++#include "ns3/command-line.h"
++#include "ns3/network-server-helper.h"
++#include "ns3/correlated-shadowing-propagation-loss-model.h"
++#include "ns3/building-penetration-loss.h"
++#include "ns3/building-allocator.h"
++#include "ns3/buildings-helper.h"
++#include "ns3/forwarder-helper.h"
++#include <algorithm>
++#include <ctime>
++#include "ns3/basic-energy-source-helper.h"
++#include "ns3/lora-radio-energy-model-helper.h"
++
++#include "ns3/udp-client-server-helper.h"
++#include "ns3/internet-stack-helper.h"
++#include "ns3/ipv4-address-helper.h"
++#include <iostream>
++#include <string>
++#include <map>
++#include <sstream>
++
++using namespace ns3;
++using namespace lorawan;
++
++NS_LOG_COMPONENT_DEFINE ("ComplexLorawanNetworkExample");
++
++// Network settings
++int nDevices = 64;
++int nGateways = 1;
++double radius = 1000;
++double simulationTime = 86400;
++
++// Channel model
++bool realisticChannelModel = true;
++
++int appPeriodSeconds = 50;
++
++// Output control
++bool print = true;
++
++int packetSize = 8;
++bool isCEndDevice = false;
++std::string filename = "lorawan_input";
++int seed = 1;
++std::string positionFile = "";
++std::string transmitInputFile = "";
++int interfererDevices = 50;
++int interfererPacketSize = 64;
++
++struct Device {
++    double x, y;
++};
++
++
++int
++main (int argc, char *argv[])
++{
++
++  CommandLine cmd;
++  cmd.AddValue ("nDevices", "Number of end devices to include in the simulation", nDevices);
++  cmd.AddValue ("nGateways", "Number of gateways to include in the simulation", nGateways);
++  cmd.AddValue ("radius", "The radius of the area to simulate", radius);
++  cmd.AddValue ("simulationTime", "The time for which to simulate", simulationTime);
++  cmd.AddValue ("realisticChannelModel", "Run using realistic channel model", realisticChannelModel);
++  cmd.AddValue ("packetSize", "Size of the packet to use", packetSize);
++  cmd.AddValue ("appPeriod",
++                "The period in seconds to be used by periodically transmitting applications",
++                appPeriodSeconds);
++  cmd.AddValue ("print", "Whether or not to print various informations", print);
++  cmd.AddValue ("isCEndDevice", "Use Class C end device", isCEndDevice);
++  cmd.AddValue ("filename", "File to store input for lorawan", filename);
++  cmd.AddValue ("positionFile", "positionFile", positionFile);
++  cmd.AddValue ("transmitInputFile", "transmitInputFile", transmitInputFile);
++  cmd.AddValue ("interfererDevices", "interfererDevices", interfererDevices);
++  cmd.AddValue ("interfererPacketSize", "interfererPacketSize", interfererPacketSize);
++  cmd.Parse (argc, argv);
++
++  // Set up logging
++  // LogComponentEnable ("LoraNetDevice", LOG_LEVEL_ALL);
++  // LogComponentEnable ("ComplexLorawanNetworkExample", LOG_LEVEL_ALL);
++  // LogComponentEnable ("CorrelatedShadowingPropagationLossModel", LOG_LEVEL_ALL);
++  // LogComponentEnable ("BuildingPenetrationLoss", LOG_LEVEL_ALL);
++
++  LogComponentEnable ("LoraPacketTracker", LOG_LEVEL_ALL);
++  // LogComponentEnable("EndDeviceStatus", LOG_LEVEL_ALL);
++
++  // LogComponentEnable("LoraChannel", LOG_LEVEL_INFO);
++  // LogComponentEnable("LoraPhy", LOG_LEVEL_ALL);
++  // LogComponentEnable("EndDeviceLoraPhy", LOG_LEVEL_ALL);
++  // LogComponentEnable("GatewayLoraPhy", LOG_LEVEL_ALL);
++  // LogComponentEnable("SimpleGatewayLoraPhy", LOG_LEVEL_ALL);
++  // LogComponentEnable("SimpleEndDeviceLoraPhy", LOG_LEVEL_ALL);
++  // LogComponentEnable("LoraInterferenceHelper", LOG_LEVEL_ALL);
++  // LogComponentEnable("LorawanMac", LOG_LEVEL_ALL);
++  // LogComponentEnable("EndDeviceLorawanMac", LOG_LEVEL_ALL);
++  // LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_ALL);
++  // LogComponentEnable("GatewayLorawanMac", LOG_LEVEL_ALL);
++  // LogComponentEnable("LogicalLoraChannelHelper", LOG_LEVEL_ALL);
++  // LogComponentEnable("LogicalLoraChannel", LOG_LEVEL_ALL);
++  // LogComponentEnable("LoraHelper", LOG_LEVEL_ALL);
++  // LogComponentEnable("LoraPhyHelper", LOG_LEVEL_ALL);
++  // LogComponentEnable("LorawanMacHelper", LOG_LEVEL_ALL);
++  // LogComponentEnable("PeriodicSenderHelper", LOG_LEVEL_ALL);
++  // LogComponentEnable("PeriodicSender", LOG_LEVEL_ALL);  
++  // LogComponentEnable("LorawanMacHeader", LOG_LEVEL_ALL);
++  // LogComponentEnable("LoraFrameHeader", LOG_LEVEL_ALL);
++  // LogComponentEnable("NetworkScheduler", LOG_LEVEL_ALL);
++  // LogComponentEnable("NetworkServer", LOG_LEVEL_ALL);
++  // LogComponentEnable("NetworkStatus", LOG_LEVEL_ALL);
++  // LogComponentEnable("NetworkController", LOG_LEVEL_ALL);
++
++  /***********
++   *  Setup  *
++   ***********/
++
++  std::ifstream inputFile(transmitInputFile);
++	std::map<std::string, std::vector<double>> transmissionTimes;
++	int device;
++  std::string line;
++	while (std::getline(inputFile, line)) {
++		std::istringstream iss(line);
++  		std::vector<std::string> tokens;
++		std::string token;
++		while (std::getline(iss, token, ' ')) {
++			tokens.push_back(token);
++		}
++
++    std::string str = tokens[2];
++    size_t pos = str.find("s");
++
++    std::string num_str = str.substr(0, pos);
++    double time = std::stod(num_str);
++
++    pos = tokens[3].find("=");
++    std::string ip = tokens[3].substr(pos+1);
++    if(transmissionTimes.find(ip) == transmissionTimes.end()) {
++      transmissionTimes[ip] = std::vector<double>();
++    }
++    transmissionTimes[ip].push_back(time);
++  	// iss >> time >> std::ignore >> std::ignore >> std::ignore >> device;
++		// if(tokens[tokens.size() -2].compare("gateway") != 0)
++		// 	transmissionTimes[stoi(tokens.back())].push_back(stod(tokens.front()));
++	}
++	std::map<int, std::vector<double>> transmissionTimesInterferer;
++  int i = 0;
++	for (const auto& [device, times] : transmissionTimes) {
++    transmissionTimesInterferer[i] = times;
++    i++;
++  }
++
++	inputFile.close();
++
++	std::vector<Device> devices;
++    std::ifstream infile(positionFile);
++    while (getline(infile, line)) {
++        int pos = line.find_first_of(",");
++        int end = line.find_first_of(":", pos);
++
++        int device_num = stoi(line.substr(7, pos));
++		// cout << device_num;
++        double x_pos = stod(line.substr(pos+13, end-pos-13));
++
++        pos = end;
++        end = line.find_first_of(":", pos+1);
++
++        double y_pos = stod(line.substr(pos+1, end-pos-1));
++
++        Device d;
++        d.x = x_pos;
++        d.y = y_pos;
++        devices.push_back(d);
++    }
++	infile.close();
++
++  // Create the time value from the period
++  Time appPeriod = Seconds (appPeriodSeconds);
++
++  // Mobility
++  MobilityHelper mobility;
++  mobility.SetPositionAllocator ("ns3::UniformDiscPositionAllocator", "rho", DoubleValue (radius),
++                                 "X", DoubleValue (0.0), "Y", DoubleValue (0.0));
++  mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
++
++  /************************
++   *  Create the channel  *
++   ************************/
++
++  // Create the lora channel object
++  Ptr<LogDistancePropagationLossModel> loss = CreateObject<LogDistancePropagationLossModel> ();
++  loss->SetPathLossExponent (3.76);
++  loss->SetReference (1, 7.7);
++
++  if (realisticChannelModel)
++    {
++      // Create the correlated shadowing component
++      Ptr<CorrelatedShadowingPropagationLossModel> shadowing =
++          CreateObject<CorrelatedShadowingPropagationLossModel> ();
++
++      // Aggregate shadowing to the logdistance loss
++      loss->SetNext (shadowing);
++      // Add the effect to the channel propagation loss
++      Ptr<BuildingPenetrationLoss> buildingLoss = CreateObject<BuildingPenetrationLoss> ();
++
++      shadowing->SetNext (buildingLoss);
++    }
++
++  Ptr<PropagationDelayModel> delay = CreateObject<ConstantSpeedPropagationDelayModel> ();
++
++  Ptr<LoraChannel> channel = CreateObject<LoraChannel> (loss, delay);
++
++  /************************
++   *  Create the helpers  *
++   ************************/
++
++  // Create the LoraPhyHelper
++  LoraPhyHelper phyHelper = LoraPhyHelper ();
++  phyHelper.SetChannel (channel);
++
++  // Create the LorawanMacHelper
++  LorawanMacHelper macHelper = LorawanMacHelper ();
++  // Create the LoraHelper
++  LoraHelper helper = LoraHelper ();
++  helper.EnablePacketTracking (); // Output filename
++  // helper.EnableSimulationTimePrinting ();
++
++  //Create the NetworkServerHelper
++  NetworkServerHelper nsHelper = NetworkServerHelper ();
++
++  //Create the ForwarderHelper
++  ForwarderHelper forHelper = ForwarderHelper ();
++
++  /************************
++   *  Create End Devices  *
++   ************************/
++
++  // Create a set of nodes
++  NodeContainer endDevices;
++  endDevices.Create (nDevices);
++
++  // Assign a mobility model to each node
++  mobility.Install (endDevices);
++
++  // Make it so that nodes are at a certain height > 0
++  for (NodeContainer::Iterator j = endDevices.Begin (); j != endDevices.End (); ++j)
++    {
++      Ptr<MobilityModel> mobility = (*j)->GetObject<MobilityModel> ();
++      Vector position = mobility->GetPosition ();
++      position.z = 1.2;
++      mobility->SetPosition (position);
++    }
++
++  // Create the LoraNetDevices of the end devices
++  uint8_t nwkId = 54;
++  uint32_t nwkAddr = 1864;
++  Ptr<LoraDeviceAddressGenerator> addrGen =
++      CreateObject<LoraDeviceAddressGenerator> (nwkId, nwkAddr);
++
++  // Create the LoraNetDevices of the end devices
++  macHelper.SetAddressGenerator (addrGen);
++  phyHelper.SetDeviceType (LoraPhyHelper::ED);
++  if(isCEndDevice) {
++    NS_LOG_INFO ("Using Class C end device"); 
++    macHelper.SetDeviceType (LorawanMacHelper::ED_C);
++  }
++  else {
++    NS_LOG_INFO ("Using Class A end device"); 
++    macHelper.SetDeviceType (LorawanMacHelper::ED_A);
++  }
++
++  NetDeviceContainer endDevicesNetDevices = helper.Install (phyHelper, macHelper, endDevices);
++
++  // Now end devices are connected to the channel
++
++  // Connect trace sources
++  for (NodeContainer::Iterator j = endDevices.Begin (); j != endDevices.End (); ++j)
++    {
++      Ptr<Node> node = *j;
++      Ptr<LoraNetDevice> loraNetDevice = node->GetDevice (0)->GetObject<LoraNetDevice> ();
++      Ptr<LoraPhy> phy = loraNetDevice->GetPhy ();
++    }
++
++  /*********************
++   *  Create Gateways  *
++   *********************/
++
++  // Create the gateway nodes (allocate them uniformely on the disc)
++  NodeContainer gateways;
++  gateways.Create (nGateways);
++
++  Ptr<ListPositionAllocator> allocator = CreateObject<ListPositionAllocator> ();
++  // Make it so that nodes are at a certain height > 0
++  allocator->Add (Vector (0.0, 0.0, 15.0));
++  mobility.SetPositionAllocator (allocator);
++  mobility.Install (gateways);
++
++  // Create a netdevice for each gateway
++  phyHelper.SetDeviceType (LoraPhyHelper::GW);
++  macHelper.SetDeviceType (LorawanMacHelper::GW);
++  helper.Install (phyHelper, macHelper, gateways);
++
++  /**********************
++   *  Handle buildings  *
++   **********************/
++
++  double xLength = 130;
++  double deltaX = 32;
++  double yLength = 64;
++  double deltaY = 17;
++  int gridWidth = 2 * radius / (xLength + deltaX);
++  int gridHeight = 2 * radius / (yLength + deltaY);
++  if (realisticChannelModel == false)
++    {
++      gridWidth = 0;
++      gridHeight = 0;
++    }
++  Ptr<GridBuildingAllocator> gridBuildingAllocator;
++  gridBuildingAllocator = CreateObject<GridBuildingAllocator> ();
++  gridBuildingAllocator->SetAttribute ("GridWidth", UintegerValue (gridWidth));
++  gridBuildingAllocator->SetAttribute ("LengthX", DoubleValue (xLength));
++  gridBuildingAllocator->SetAttribute ("LengthY", DoubleValue (yLength));
++  gridBuildingAllocator->SetAttribute ("DeltaX", DoubleValue (deltaX));
++  gridBuildingAllocator->SetAttribute ("DeltaY", DoubleValue (deltaY));
++  gridBuildingAllocator->SetAttribute ("Height", DoubleValue (6));
++  gridBuildingAllocator->SetBuildingAttribute ("NRoomsX", UintegerValue (2));
++  gridBuildingAllocator->SetBuildingAttribute ("NRoomsY", UintegerValue (4));
++  gridBuildingAllocator->SetBuildingAttribute ("NFloors", UintegerValue (2));
++  gridBuildingAllocator->SetAttribute (
++      "MinX", DoubleValue (-gridWidth * (xLength + deltaX) / 2 + deltaX / 2));
++  gridBuildingAllocator->SetAttribute (
++      "MinY", DoubleValue (-gridHeight * (yLength + deltaY) / 2 + deltaY / 2));
++  BuildingContainer bContainer = gridBuildingAllocator->Create (gridWidth * gridHeight);
++
++  BuildingsHelper::Install (endDevices);
++  BuildingsHelper::Install (gateways);
++
++  // Print the buildings
++  if (print)
++    {
++      std::ofstream myfile;
++      myfile.open ("buildings.txt");
++      std::vector<Ptr<Building>>::const_iterator it;
++      int j = 1;
++      for (it = bContainer.Begin (); it != bContainer.End (); ++it, ++j)
++        {
++          Box boundaries = (*it)->GetBoundaries ();
++          myfile << "set object " << j << " rect from " << boundaries.xMin << "," << boundaries.yMin
++                 << " to " << boundaries.xMax << "," << boundaries.yMax << std::endl;
++        }
++      myfile.close ();
++    }
++
++  /**********************************************
++   *  Set up the end device's spreading factor  *
++   **********************************************/
++
++  macHelper.SetSpreadingFactorsUp (endDevices, gateways, channel);
++
++  NS_LOG_DEBUG ("Completed configuration");
++
++  /*********************************************
++   *  Install applications on the end devices  *
++   *********************************************/
++
++  Time appStopTime = Seconds (simulationTime);
++  PeriodicSenderHelper appHelper = PeriodicSenderHelper ();
++  appHelper.SetPeriod (Seconds (appPeriodSeconds));
++  appHelper.SetPacketSize(packetSize);
++  appHelper.SetPacketSizeRandomVariable(0);
++  ApplicationContainer appContainer = appHelper.Install(endDevices);
++
++  appContainer.Start (Seconds (0));
++  appContainer.Stop (appStopTime);
++
++    /************************
++   * Install Energy Model *
++   ************************/
++
++  BasicEnergySourceHelper basicSourceHelper;
++  LoraRadioEnergyModelHelper radioEnergyHelper;
++
++  // configure energy source
++  basicSourceHelper.Set ("BasicEnergySourceInitialEnergyJ", DoubleValue (10000)); // Energy in J
++  basicSourceHelper.Set ("BasicEnergySupplyVoltageV", DoubleValue (3.3));
++
++  radioEnergyHelper.Set ("StandbyCurrentA", DoubleValue (0.0014));
++  radioEnergyHelper.Set ("TxCurrentA", DoubleValue (0.028));
++  radioEnergyHelper.Set ("SleepCurrentA", DoubleValue (0.0000015));
++  radioEnergyHelper.Set ("RxCurrentA", DoubleValue (0.0112));
++
++  radioEnergyHelper.SetTxCurrentModel ("ns3::ConstantLoraTxCurrentModel",
++                                       "TxCurrent", DoubleValue (0.028));
++
++  // install source on EDs' nodes
++  EnergySourceContainer sources = basicSourceHelper.Install (endDevices);
++  Names::Add ("/Names/EnergySource", sources.Get (0));
++
++  // install device model
++  DeviceEnergyModelContainer deviceModels = radioEnergyHelper.Install
++      (endDevicesNetDevices, sources);
++
++    
++
++  /**************************
++   *  Create Network Server  *
++   ***************************/
++
++  // Create the NS node
++  NodeContainer networkServer;
++  networkServer.Create (1);
++
++  // Create a NS for the network
++  nsHelper.SetEndDevices (endDevices);
++  nsHelper.SetGateways (gateways);
++  nsHelper.Install (networkServer);
++
++  //Create a forwarder for each gateway
++  forHelper.Install (gateways);
++
++  /**********************************************
++   *  Interferer setup  *
++   **********************************************/
++
++  LoraHelper helperI = LoraHelper ();
++  helperI.EnablePacketTracking (); // Output filename
++
++  LorawanMacHelper macHelperI = LorawanMacHelper ();
++
++  Ptr<LoraChannel> channelI = CreateObject<LoraChannel> (loss, delay);
++
++  LoraPhyHelper phyHelperI = LoraPhyHelper ();
++  phyHelperI.SetChannel (channel);
++  phyHelperI.SetDeviceType (LoraPhyHelper::ED);
++
++  NodeContainer interfererNodes;
++  interfererNodes.Create(transmissionTimes.size());
++  double xpos = 0.0;
++  double ypos = 0.0;
++	MobilityHelper mobilityInterferer;
++	Ptr<ListPositionAllocator> positionAllocInterferer = CreateObject<ListPositionAllocator>();
++	for (int i = 0; i < transmissionTimes.size(); i++) {
++    Vector pos(devices[i].x, devices[i].y, 0);
++		positionAllocInterferer->Add(pos);
++  }
++	mobilityInterferer.SetPositionAllocator(positionAllocInterferer);
++	mobilityInterferer.SetMobilityModel("ns3::ConstantPositionMobilityModel");
++	mobilityInterferer.Install(interfererNodes);
++
++  nwkId = 1;
++  nwkAddr = 130;
++  addrGen =
++      CreateObject<LoraDeviceAddressGenerator> (nwkId, nwkAddr);
++  macHelperI.SetAddressGenerator (addrGen);
++  phyHelperI.SetDeviceType (LoraPhyHelper::ED);
++  macHelperI.SetDeviceType (LorawanMacHelper::ED_A);
++  NetDeviceContainer interfererDevice = helperI.InstallI (phyHelperI, macHelperI, interfererNodes);
++
++  for (NodeContainer::Iterator j = interfererNodes.Begin (); j != interfererNodes.End (); ++j)
++    {
++      Ptr<Node> node = *j;
++      Ptr<LoraNetDevice> loraNetDevice = node->GetDevice (0)->GetObject<LoraNetDevice> ();
++      Ptr<LoraPhy> phy = loraNetDevice->GetPhy ();
++    }
++
++  NodeContainer interfererServer;
++  interfererServer.Create(1);
++  Ptr<ListPositionAllocator> allocatorI = CreateObject<ListPositionAllocator> ();
++  // Make it so that nodes are at a certain height > 0
++  allocatorI->Add (Vector (10.0, 10.0, 0.0));
++  mobility.SetPositionAllocator (allocatorI);
++  mobility.Install (interfererServer);
++  phyHelperI.SetDeviceType (LoraPhyHelper::GW);
++  macHelperI.SetDeviceType (LorawanMacHelper::GW);
++  helperI.InstallI (phyHelperI, macHelperI, interfererServer);
++
++  macHelperI.SetSpreadingFactorsUp (interfererNodes, interfererServer, channel);
++
++  Time appStopTimeI = Seconds (simulationTime);
++  PeriodicSenderHelper appHelperI = PeriodicSenderHelper ();
++  appHelperI.SetPacketSize(interfererPacketSize);
++  appHelperI.SetPacketSizeRandomVariable(0);
++  // appHelperI.SetPeriod (MilliSeconds (20));
++  // ApplicationContainer appContainerI = appHelperI.InstallI(interfererNodes);
++  // appContainerI.Start (Seconds (0));
++	for (const auto& [device, times] : transmissionTimesInterferer) {
++		if(times.size() > 1) {
++      double sum = 0.0;
++      for (int i = 0; i < times.size()-1; i++) {
++          sum += times[i+1] - times[i];
++      }
++      double average = sum / (times.size()-1);
++      // appHelperI.SetPeriod (MilliSeconds (20));
++      appHelperI.SetPeriod (MilliSeconds (average*1000));
++		}
++		else {
++      appHelperI.SetPeriod (MilliSeconds (1000));
++		}
++		// client.SetAttribute("Interval", TimeValue(MilliSeconds(20)));
++		std::cout << device << " " << interfererNodes.GetN() << "\n";
++    ApplicationContainer appContainerI = appHelperI.InstallI(interfererNodes.Get(device));
++    appContainerI.Start (Seconds (times[0]));
++	}
++  ////////////////
++  // Simulation //
++  ////////////////
++
++  Simulator::Stop (appStopTime);
++
++  NS_LOG_INFO ("Running simulation...");
++  Simulator::Run ();
++  int counter = 0;
++  // for (DeviceEnergyModelContainer::Iterator iter = deviceModels.Begin (); iter != deviceModels.End (); iter ++)
++  // {
++  //   counter += 1;
++  //   double energyConsumed = (*iter)->GetTotalEnergyConsumption ();
++  //   NS_LOG_UNCOND ("End of simulation (" << Simulator::Now ().GetSeconds ()
++  //                   << "s) Total energy consumed by node " << counter << " = " << energyConsumed << "J");
++  // }
++
++
++  Simulator::Destroy ();
++
++  ///////////////////////////
++  // Print results to file //
++  ///////////////////////////
++  NS_LOG_INFO ("Computing performance metrics...");
++
++  LoraPacketTracker &tracker = helper.GetPacketTracker ();
++  std::cout << tracker.CountMacPacketsGlobally (Seconds (0), appStopTime + Hours (1)) << std::endl;
++  
++  LoraPacketTracker &trackerI = helperI.GetPacketTracker ();
++  std::cout << trackerI.CountMacPacketsGlobally (Seconds (0), appStopTime + Hours (1)) << std::endl;
++
++
++	// if (true) {
++
++  //    std::ofstream file(filename);
++	// 	uint32_t i = 0;
++	// 	while (i < nDevices) {
++	// 		Ptr<MobilityModel> mobility = endDevices.Get(i)->GetObject<
++	// 				MobilityModel>();
++	// 		Vector position = mobility->GetPosition();
++	// 		file << "Device " << i << ", " << "position = " << position
++	// 				<< std::endl;
++	// 		i++;
++	// 	}
++
++  //     file.close();
++	// }
++
++
++  return 0;
++}
++
++// eliminate the checking before transmission
++// 1 gateway independent of the other one
+\ No newline at end of file
+diff --git a/examples/custom-input-example.cc b/examples/custom-input-example.cc
+deleted file mode 100644
+index 4270333..0000000
+--- a/examples/custom-input-example.cc
++++ /dev/null
+@@ -1,151 +0,0 @@
+-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
+-/*
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 as
+- * published by the Free Software Foundation;
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, write to the Free Software
+- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+- */
+-
+-// Network topology
+-//
+-//       n0    n1   n2   n3
+-//       |     |    |    |
+-//       =================
+-//              LAN
+-//
+-// - UDP flows from n0 to n1 and back
+-// - DropTail queues
+-// - Tracing of queues and packet receptions to file "udp-echo.tr"
+-
+-#include <fstream>
+-#include "ns3/core-module.h"
+-#include "ns3/csma-module.h"
+-#include "ns3/internet-module.h"
+-#include "ns3/applications-module.h"
+-
+-using namespace ns3;
+-
+-NS_LOG_COMPONENT_DEFINE ("UdpEchoExample");
+-
+-int
+-main (int argc, char *argv[])
+-{
+-//
+-// Users may find it convenient to turn on explicit debugging
+-// for selected modules; the below lines suggest how to do this
+-//
+-
+-LogComponentEnable ("UdpEchoExample", LOG_LEVEL_INFO);
+-LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_ALL);
+-LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_ALL);
+-
+-//
+-// Allow the user to override any of the defaults and the above Bind() at
+-// run-time, via command-line arguments
+-//
+-  bool useV6 = false;
+-  char message[50];
+-  Address serverAddress;
+-  int nDevices = 5;
+-
+-  CommandLine cmd (__FILE__);
+-  cmd.AddValue ("useIpv6", "Use Ipv6", useV6);
+-  cmd.AddValue ("message", "Message to be sent", message);
+-  cmd.AddValue ("nDevices", "Message to be sent", message);
+-  cmd.Parse (argc, argv);
+-  NS_LOG_INFO(message);
+-//
+-// Explicitly create the nodes required by the topology (shown above).
+-//
+-  NS_LOG_INFO ("Create nodes.");
+-  NodeContainer n;
+-  n.Create (nDevices);
+-
+-  InternetStackHelper internet;
+-  internet.Install (n);
+-
+-  NS_LOG_INFO ("Create channels.");
+-//
+-// Explicitly create the channels required by the topology (shown above).
+-//
+-  CsmaHelper csma;
+-  csma.SetChannelAttribute ("DataRate", DataRateValue (DataRate (5000000)));
+-  csma.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+-  csma.SetDeviceAttribute ("Mtu", UintegerValue (1400));
+-  NetDeviceContainer d = csma.Install (n);
+-
+-//
+-// We've got the "hardware" in place.  Now we need to add IP addresses.
+-//
+-  NS_LOG_INFO ("Assign IP Addresses.");
+-  if (useV6 == false)
+-    {
+-      Ipv4AddressHelper ipv4;
+-      ipv4.SetBase ("10.1.1.0", "255.255.255.0");
+-      Ipv4InterfaceContainer i = ipv4.Assign (d);
+-      serverAddress = Address(i.GetAddress (1));
+-    }
+-  else
+-    {
+-      Ipv6AddressHelper ipv6;
+-      ipv6.SetBase ("2001:0000:f00d:cafe::", Ipv6Prefix (64));
+-      Ipv6InterfaceContainer i6 = ipv6.Assign (d);
+-      serverAddress = Address(i6.GetAddress (1,1));
+-    }
+-
+-  NS_LOG_INFO ("Create Applications.");
+-//
+-// Create a UdpEchoServer application on node one.
+-//
+-  uint16_t port = 9;  // well-known echo port number
+-  UdpEchoServerHelper server (port);
+-  ApplicationContainer apps = server.Install (n.Get (1));
+-  apps.Start (Seconds (1.0));
+-  apps.Stop (Seconds (10.0));
+-
+-//
+-// Create a UdpEchoClient application to send UDP datagrams from node zero to
+-// node one.
+-//
+-  uint32_t packetSize = 1024;
+-  uint32_t maxPacketCount = 1;
+-  Time interPacketInterval = Seconds (1.);
+-  UdpEchoClientHelper client (serverAddress, port);
+-  client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
+-  client.SetAttribute ("Interval", TimeValue (interPacketInterval));
+-  client.SetAttribute ("PacketSize", UintegerValue (packetSize));
+-  apps = client.Install (n.Get (0));
+-  apps.Start (Seconds (2.0));
+-  apps.Stop (Seconds (10.0));
+-
+-//
+-// Users may find it convenient to initialize echo packets with actual data;
+-// the below lines suggest how to do this
+-//
+-  client.SetFill (apps.Get (0), "Hello World");
+-
+-  client.SetFill (apps.Get (0), 0xa5, 1024);
+-
+-  uint8_t fill[] = { 0, 1, 2, 3, 4, 5, 6};
+-  client.SetFill (apps.Get (0), fill, sizeof(fill), 1024);
+-
+-  AsciiTraceHelper ascii;
+-  csma.EnableAsciiAll (ascii.CreateFileStream ("udp-echo.tr"));
+-  csma.EnablePcapAll ("udp-echo", false);
+-
+-//
+-// Now, do the actual simulation.
+-//
+-  NS_LOG_INFO ("Run Simulation.");
+-  Simulator::Run ();
+-  Simulator::Destroy ();
+-  NS_LOG_INFO ("Done.");
+-}
+diff --git a/examples/wscript b/examples/wscript
+index fd1bb33..82c1e8f 100644
+--- a/examples/wscript
++++ b/examples/wscript
+@@ -11,6 +11,9 @@ def build(bld):
+     obj = bld.create_ns3_program('complete-network-example', ['lorawan'])
+     obj.source = 'complete-network-example.cc'
+ 
++    obj = bld.create_ns3_program('complete-network-interference', ['lorawan', 'wimax', 'internet', 'csma', 'applications'])
++    obj.source = 'complete-network-interference.cc'
++
+     obj = bld.create_ns3_program('adr-example', ['lorawan'])
+     obj.source = 'adr-example.cc'
+ 
+@@ -19,3 +22,6 @@ def build(bld):
+ 
+     obj = bld.create_ns3_program('parallel-reception-example', ['lorawan'])
+     obj.source = 'parallel-reception-example.cc'
++
++    # obj = bld.create_ns3_program('custom-input-example', ['lorawan'])
++    # obj.source = 'custom-input-example.cc'
+\ No newline at end of file
+diff --git a/helper/lora-helper.cc b/helper/lora-helper.cc
+index 80a5822..3c8d4e2 100644
+--- a/helper/lora-helper.cc
++++ b/helper/lora-helper.cc
+@@ -146,6 +146,115 @@ NS_LOG_COMPONENT_DEFINE ("LoraHelper");
+   return devices;
+ }
+ 
++ NetDeviceContainer
++  LoraHelper::InstallI ( const LoraPhyHelper &phyHelper,
++                        const LorawanMacHelper &macHelper,
++                        NodeContainer c) const
++  {
++    NS_LOG_FUNCTION_NOARGS ();
++
++    NetDeviceContainer devices;
++
++    // Go over the various nodes in which to install the NetDevice
++    for (NodeContainer::Iterator i = c.Begin (); i != c.End (); ++i)
++      {
++        Ptr<Node> node = *i;
++
++        // Create the LoraNetDevice
++        Ptr<LoraNetDevice> device = CreateObject<LoraNetDevice> ();
++
++        // Create the PHY
++        Ptr<LoraPhy> phy = phyHelper.CreateI (node, device);
++        NS_ASSERT (phy != 0);
++        device->SetPhy (phy);
++        NS_LOG_DEBUG ("Done creating the PHY");
++
++        // Connect Trace Sources if necessary
++        if (m_packetTracker)
++          {
++            if (phyHelper.GetDeviceType () ==
++                TypeId::LookupByName ("ns3::SimpleEndDeviceLoraPhy"))
++              {
++                phy->TraceConnectWithoutContext ("StartSending",
++                                                 MakeCallback
++                                                 (&LoraPacketTracker::TransmissionCallback,
++                                                  m_packetTracker));
++              }
++            else if (phyHelper.GetDeviceType () ==
++                     TypeId::LookupByName ("ns3::SimpleGatewayLoraPhy"))
++            {
++              phy->TraceConnectWithoutContext ("StartSending",
++                                               MakeCallback
++                                               (&LoraPacketTracker::TransmissionCallback,
++                                                m_packetTracker));
++              phy->TraceConnectWithoutContext ("ReceivedPacket",
++                                               MakeCallback
++                                                 (&LoraPacketTracker::PacketReceptionCallback,
++                                                 m_packetTracker));
++              phy->TraceConnectWithoutContext ("LostPacketBecauseInterference",
++                                               MakeCallback
++                                                 (&LoraPacketTracker::InterferenceCallback,
++                                                 m_packetTracker));
++              // phy->TraceConnectWithoutContext ("LostPacketBecauseNoMoreReceivers",
++              //                                  MakeCallback
++              //                                    (&LoraPacketTracker::NoMoreReceiversCallback,
++              //                                    m_packetTracker));
++              phy->TraceConnectWithoutContext ("LostPacketBecauseUnderSensitivity",
++                                               MakeCallback
++                                                 (&LoraPacketTracker::UnderSensitivityCallback,
++                                                 m_packetTracker));
++              // phy->TraceConnectWithoutContext ("NoReceptionBecauseTransmitting",
++              //                                  MakeCallback
++              //                                    (&LoraPacketTracker::LostBecauseTxCallback,
++              //                                    m_packetTracker));
++            }
++        }
++
++      // Create the MAC
++      Ptr<LorawanMac> mac = macHelper.Create (node, device);
++      NS_ASSERT (mac != 0);
++      mac->SetPhy (phy);
++      NS_LOG_DEBUG ("Done creating the MAC");
++      device->SetMac (mac);
++
++      if (m_packetTracker)
++        {
++          if (phyHelper.GetDeviceType () ==
++              TypeId::LookupByName ("ns3::SimpleEndDeviceLoraPhy"))
++            {
++              mac->TraceConnectWithoutContext ("SentNewPacket",
++                                               MakeCallback
++                                                 (&LoraPacketTracker::MacTransmissionCallback,
++                                                 m_packetTracker));
++
++              mac->TraceConnectWithoutContext ("RequiredTransmissions",
++                                               MakeCallback
++                                                 (&LoraPacketTracker::RequiredTransmissionsCallback,
++                                                 m_packetTracker));
++            }
++          else if (phyHelper.GetDeviceType () ==
++                   TypeId::LookupByName ("ns3::SimpleGatewayLoraPhy"))
++            {
++              // mac->TraceConnectWithoutContext ("SentNewPacket",
++              //                                  MakeCallback
++              //                                  (&LoraPacketTracker::MacTransmissionCallback,
++              //                                   m_packetTracker));
++
++              mac->TraceConnectWithoutContext ("ReceivedPacket",
++                                               MakeCallback
++                                               (&LoraPacketTracker::MacGwReceptionCallback,
++                                                m_packetTracker));
++            }
++        }
++
++      node->AddDevice (device);
++      devices.Add (device);
++      NS_LOG_DEBUG ("node=" << node << ", mob=" << node->GetObject<MobilityModel> ()->GetPosition ());
++    }
++  return devices;
++}
++
++
+ NetDeviceContainer
+ LoraHelper::Install ( const LoraPhyHelper &phy,
+                       const LorawanMacHelper &mac,
+diff --git a/helper/lora-helper.h b/helper/lora-helper.h
+index 9840322..1e20a91 100644
+--- a/helper/lora-helper.h
++++ b/helper/lora-helper.h
+@@ -59,6 +59,9 @@ public:
+   virtual NetDeviceContainer Install (const LoraPhyHelper &phyHelper,
+                                       const LorawanMacHelper &macHelper,
+                                       NodeContainer c) const;
++  virtual NetDeviceContainer InstallI (const LoraPhyHelper &phyHelper,
++                                      const LorawanMacHelper &macHelper,
++                                      NodeContainer c) const;
+ 
+   /**
+    * Install LoraNetDevice on a single node
+diff --git a/helper/lora-packet-tracker.cc b/helper/lora-packet-tracker.cc
+index 8596e85..378d16f 100644
+--- a/helper/lora-packet-tracker.cc
++++ b/helper/lora-packet-tracker.cc
+@@ -49,7 +49,7 @@ LoraPacketTracker::MacTransmissionCallback (Ptr<Packet const> packet)
+ {
+   if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("A new packet was sent by the MAC layer");
++      // NS_LOG_INFO ("A new packet was sent by the MAC layer");
+ 
+       MacPacketStatus status;
+       status.packet = packet;
+@@ -67,10 +67,10 @@ LoraPacketTracker::RequiredTransmissionsCallback (uint8_t reqTx, bool success,
+                                                   Time firstAttempt,
+                                                   Ptr<Packet> packet)
+ {
+-  NS_LOG_INFO ("Finished retransmission attempts for a packet");
+-  NS_LOG_DEBUG ("Packet: " << packet << " ReqTx " << unsigned(reqTx) <<
+-                ", succ: " << success << ", firstAttempt: " <<
+-                firstAttempt.GetSeconds ());
++  // NS_LOG_INFO ("Finished retransmission attempts for a packet");
++  // NS_LOG_DEBUG ("Packet: " << packet << " ReqTx " << unsigned(reqTx) <<
++  //               ", succ: " << success << ", firstAttempt: " <<
++  //               firstAttempt.GetSeconds ());
+ 
+   RetransmissionStatus entry;
+   entry.firstAttempt = firstAttempt;
+@@ -87,9 +87,9 @@ LoraPacketTracker::MacGwReceptionCallback (Ptr<Packet const> packet)
+ {
+   if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("A packet was successfully received" <<
+-                   " at the MAC layer of gateway " <<
+-                   Simulator::GetContext ());
++      // NS_LOG_INFO ("A packet was successfully received" <<
++      //              " at the MAC layer of gateway " <<
++      //              Simulator::GetContext ());
+ 
+       // Find the received packet in the m_macPacketTracker
+       auto it = m_macPacketTracker.find (packet);
+@@ -101,7 +101,7 @@ LoraPacketTracker::MacGwReceptionCallback (Ptr<Packet const> packet)
+         }
+       else
+         {
+-          NS_ABORT_MSG ("Packet not found in tracker");
++          // NS_ABORT_MSG ("Packet not found in tracker");
+         }
+     }
+ }
+@@ -113,9 +113,9 @@ LoraPacketTracker::MacGwReceptionCallback (Ptr<Packet const> packet)
+ void
+ LoraPacketTracker::TransmissionCallback (Ptr<Packet const> packet, uint32_t edId)
+ {
+-  if (IsUplink (packet))
++    if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("PHY packet " << packet
++      NS_LOG_INFO (Simulator::Now().GetSeconds() << " PHY packet " << packet
+                                  << " size "
+                                  << packet->GetSize()
+                                  << " was transmitted by device "
+@@ -125,7 +125,7 @@ LoraPacketTracker::TransmissionCallback (Ptr<Packet const> packet, uint32_t edId
+       status.packet = packet;
+       status.sendTime = Simulator::Now ();
+       status.senderId = edId;
+-
++      // if(it != m_packetTracker.end())
+       m_packetTracker.insert (std::pair<Ptr<Packet const>, PacketStatus> (packet, status));
+     }
+ }
+@@ -136,14 +136,15 @@ LoraPacketTracker::PacketReceptionCallback (Ptr<Packet const> packet, uint32_t g
+   if (IsUplink (packet))
+     {
+       // Remove the successfully received packet from the list of sent ones
+-      NS_LOG_INFO ("PHY packet " << packet
++      // NS_LOG_INFO ("PHY packet " << packet
+                                   
+-                                 << " was successfully received at gateway "
+-                                 << gwId);
++      //                            << " was successfully received at gateway "
++      //                            << gwId);
+ 
+       std::map<Ptr<Packet const>, PacketStatus>::iterator it = m_packetTracker.find (packet);
+-      (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
+-                                                                           RECEIVED));
++      if(it != m_packetTracker.end())
++        (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
++                                                                            RECEIVED));
+     }
+ }
+ 
+@@ -152,13 +153,14 @@ LoraPacketTracker::InterferenceCallback (Ptr<Packet const> packet, uint32_t gwId
+ {
+   if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("PHY packet " << packet
+-                                 << " was interfered at gateway "
+-                                 << gwId);
++      // NS_LOG_INFO ("PHY packet " << packet
++      //                            << " was interfered at gateway "
++      //                            << gwId);
+ 
+       std::map<Ptr<Packet const>, PacketStatus>::iterator it = m_packetTracker.find (packet);
+-      (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
+-                                                                           INTERFERED));
++      if(it != m_packetTracker.end())
++        (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
++                                                                            INTERFERED));
+     }
+ }
+ 
+@@ -167,12 +169,13 @@ LoraPacketTracker::NoMoreReceiversCallback (Ptr<Packet const> packet, uint32_t g
+ {
+   if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("PHY packet " << packet
+-                                 << " was lost because no more receivers at gateway "
+-                                 << gwId);
++      // NS_LOG_INFO ("PHY packet " << packet
++      //                            << " was lost because no more receivers at gateway "
++      //                            << gwId);
+       std::map<Ptr<Packet const>, PacketStatus>::iterator it = m_packetTracker.find (packet);
+-      (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
+-                                                                           NO_MORE_RECEIVERS));
++      if(it != m_packetTracker.end())
++        (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
++                                                                            NO_MORE_RECEIVERS));
+     }
+ }
+ 
+@@ -181,9 +184,9 @@ LoraPacketTracker::UnderSensitivityCallback (Ptr<Packet const> packet, uint32_t
+ {
+   if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("PHY packet " << packet
+-                                 << " was lost because under sensitivity at gateway "
+-                                 << gwId);
++      // NS_LOG_INFO ("PHY packet " << packet
++      //                            << " was lost because under sensitivity at gateway "
++      //                            << gwId);
+ 
+       std::map<Ptr<Packet const>, PacketStatus>::iterator it = m_packetTracker.find (packet);
+       (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
+@@ -196,9 +199,9 @@ LoraPacketTracker::LostBecauseTxCallback (Ptr<Packet const> packet, uint32_t gwI
+ {
+   if (IsUplink (packet))
+     {
+-      NS_LOG_INFO ("PHY packet " << packet
+-                                 << " was lost because of GW transmission at gateway "
+-                                 << gwId);
++      // NS_LOG_INFO ("PHY packet " << packet
++      //                            << " was lost because of GW transmission at gateway "
++      //                            << gwId);
+ 
+       std::map<Ptr<Packet const>, PacketStatus>::iterator it = m_packetTracker.find (packet);
+       (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
+@@ -209,7 +212,7 @@ LoraPacketTracker::LostBecauseTxCallback (Ptr<Packet const> packet, uint32_t gwI
+ bool
+ LoraPacketTracker::IsUplink (Ptr<Packet const> packet)
+ {
+-  NS_LOG_FUNCTION (this);
++  // NS_LOG_FUNCTION (this);
+ 
+   LorawanMacHeader mHdr;
+   Ptr<Packet> copy = packet->Copy ();
+@@ -239,9 +242,9 @@ LoraPacketTracker::CountPhyPacketsPerGw (Time startTime, Time stopTime,
+         {
+           packetCounts.at (0)++;
+ 
+-          NS_LOG_DEBUG ("Dealing with packet " << (*itPhy).second.packet);
+-          NS_LOG_DEBUG ("This packet was received by " <<
+-                        (*itPhy).second.outcomes.size () << " gateways");
++          // NS_LOG_DEBUG ("Dealing with packet " << (*itPhy).second.packet);
++          // NS_LOG_DEBUG ("This packet was received by " <<
++          //               (*itPhy).second.outcomes.size () << " gateways");
+ 
+           if ((*itPhy).second.outcomes.count (gwId) > 0)
+             {
+@@ -301,9 +304,9 @@ LoraPacketTracker::PrintPhyPacketsPerGw (Time startTime, Time stopTime,
+         {
+           packetCounts.at (0)++;
+ 
+-          NS_LOG_DEBUG ("Dealing with packet " << (*itPhy).second.packet);
+-          NS_LOG_DEBUG ("This packet was received by " <<
+-                        (*itPhy).second.outcomes.size () << " gateways");
++          // NS_LOG_DEBUG ("Dealing with packet " << (*itPhy).second.packet);
++          // NS_LOG_DEBUG ("This packet was received by " <<
++          //               (*itPhy).second.outcomes.size () << " gateways");
+ 
+           if ((*itPhy).second.outcomes.count (gwId) > 0)
+             {
+@@ -355,7 +358,7 @@ LoraPacketTracker::PrintPhyPacketsPerGw (Time startTime, Time stopTime,
+   std::string
+   LoraPacketTracker::CountMacPacketsGlobally (Time startTime, Time stopTime)
+   {
+-    NS_LOG_FUNCTION (this << startTime << stopTime);
++    // NS_LOG_FUNCTION (this << startTime << stopTime);
+ 
+     double sent = 0;
+     double received = 0;
+@@ -380,7 +383,7 @@ LoraPacketTracker::PrintPhyPacketsPerGw (Time startTime, Time stopTime,
+   std::string
+   LoraPacketTracker::CountMacPacketsGloballyCpsr (Time startTime, Time stopTime)
+   {
+-    NS_LOG_FUNCTION (this << startTime << stopTime);
++    // NS_LOG_FUNCTION (this << startTime << stopTime);
+ 
+     double sent = 0;
+     double received = 0;
+@@ -391,9 +394,9 @@ LoraPacketTracker::PrintPhyPacketsPerGw (Time startTime, Time stopTime,
+         if ((*it).second.firstAttempt >= startTime && (*it).second.firstAttempt <= stopTime)
+           {
+             sent++;
+-            NS_LOG_DEBUG ("Found a packet");
+-            NS_LOG_DEBUG ("Number of attempts: " << unsigned(it->second.reTxAttempts) <<
+-                          ", successful: " << it->second.successful);
++            // NS_LOG_DEBUG ("Found a packet");
++            // NS_LOG_DEBUG ("Number of attempts: " << unsigned(it->second.reTxAttempts) <<
++            //               ", successful: " << it->second.successful);
+             if (it->second.successful)
+               {
+                 received++;
+diff --git a/helper/lora-phy-helper.cc b/helper/lora-phy-helper.cc
+index 060137b..f9f67ef 100644
+--- a/helper/lora-phy-helper.cc
++++ b/helper/lora-phy-helper.cc
+@@ -126,6 +126,65 @@ LoraPhyHelper::Create (Ptr<Node> node, Ptr<NetDevice> device) const
+   return phy;
+ }
+ 
++Ptr<LoraPhy>
++LoraPhyHelper::CreateI (Ptr<Node> node, Ptr<NetDevice> device) const
++{
++  NS_LOG_FUNCTION (this << node->GetId () << device);
++
++  // Create the PHY and set its channel
++  Ptr<LoraPhy> phy = m_phy.Create<LoraPhy> ();
++  phy->SetChannel (m_channel);
++
++  // Configuration is different based on the kind of device we have to create
++  std::string typeId = m_phy.GetTypeId ().GetName ();
++  if (typeId == "ns3::SimpleGatewayLoraPhy")
++    {
++      // Inform the channel of the presence of this PHY
++      m_channel->AddI (phy);
++
++      // For now, assume that the PHY will listen to the default EU channels
++      // with this ReceivePath configuration:
++      // 3 ReceivePaths on 868.1
++      // 3 ReceivePaths on 868.3
++      // 2 ReceivePaths on 868.5
++
++      // We expect that MacHelper instances will overwrite this setting if the
++      // device will operate in a different region
++      std::vector<double> frequencies;
++      frequencies.push_back (868.1);
++      frequencies.push_back (868.3);
++      frequencies.push_back (868.5);
++
++      for (auto &f : frequencies)
++        {
++          phy->GetObject<SimpleGatewayLoraPhy> ()->AddFrequency (f);
++        }
++
++      int receptionPaths = 0;
++      // Set maxReceptionPaths as a parameter
++      // int maxReceptionPaths = 8;
++      while (receptionPaths < m_maxReceptionPaths)
++        {
++          phy->GetObject<SimpleGatewayLoraPhy> ()->AddReceptionPath ();
++          receptionPaths++;
++        }
++    }
++  else if (typeId == "ns3::SimpleEndDeviceLoraPhy")
++    {
++      // The line below can be commented to speed up uplink-only simulations.
++      // This implies that the LoraChannel instance will only know about
++      // Gateways, and it will not lose time delivering packets and interference
++      // information to devices which will never listen.
++
++      m_channel->AddI (phy);
++    }
++
++  // Link the PHY to its net device
++  phy->SetDevice (device);
++
++  return phy;
++}
++
+ void
+ LoraPhyHelper::SetMaxReceptionPaths (int maxReceptionPaths)
+ {
+diff --git a/helper/lora-phy-helper.h b/helper/lora-phy-helper.h
+index b5b51b1..e8c0d91 100644
+--- a/helper/lora-phy-helper.h
++++ b/helper/lora-phy-helper.h
+@@ -87,6 +87,7 @@ public:
+    * \return a newly-created PHY object.
+    */
+   Ptr<LoraPhy> Create (Ptr<Node> node, Ptr<NetDevice> device) const;
++  Ptr<LoraPhy> CreateI (Ptr<Node> node, Ptr<NetDevice> device) const;
+ 
+   /**
+    * Set the maximum number of gateway receive paths
+diff --git a/helper/periodic-sender-helper.cc b/helper/periodic-sender-helper.cc
+index 205048b..dce9a2d 100644
+--- a/helper/periodic-sender-helper.cc
++++ b/helper/periodic-sender-helper.cc
+@@ -26,6 +26,8 @@
+ #include "ns3/trace-source-accessor.h"
+ #include "ns3/simulator.h"
+ #include "ns3/log.h"
++#include <algorithm>
++#include <random>
+ 
+ namespace ns3 {
+ namespace lorawan {
+@@ -68,11 +70,39 @@ PeriodicSenderHelper::Install (Ptr<Node> node) const
+ 
+ ApplicationContainer
+ PeriodicSenderHelper::Install (NodeContainer c) const
++{
++  ApplicationContainer apps;
++  std::vector<Ptr<Node>> new_vector;
++
++  for (std::vector<Ptr<Node>>::const_iterator i = c.Begin(); i != c.End (); ++i)
++  {
++    new_vector.push_back(*i);
++  }
++
++  std::random_device rd;
++  std::mt19937 g(rd());
++
++  std::shuffle(new_vector.begin(), new_vector.end(), g);
++  for (auto i : new_vector) {
++      apps.Add (InstallPriv (i));
++  }
++
++  // for (newVector.Iterator i = c.End (); i != c.Begin (); --i)
++  //   {
++  //     apps.Add (InstallPriv (*i));
++  //   }
++
++  return apps;
++}
++
++
++ApplicationContainer
++PeriodicSenderHelper::InstallI (NodeContainer c) const
+ {
+   ApplicationContainer apps;
+   for (NodeContainer::Iterator i = c.Begin (); i != c.End (); ++i)
+     {
+-      apps.Add (InstallPriv (*i));
++      apps.Add (InstallPrivI (*i));
+     }
+ 
+   return apps;
+@@ -131,6 +161,60 @@ PeriodicSenderHelper::InstallPriv (Ptr<Node> node) const
+   return app;
+ }
+ 
++Ptr<Application>
++PeriodicSenderHelper::InstallPrivI (Ptr<Node> node) const
++{
++  NS_LOG_FUNCTION (this << node);
++
++  Ptr<PeriodicSender> app = m_factory.Create<PeriodicSender> ();
++
++  Time interval;
++  if (m_period == Seconds (0))
++    {
++      double intervalProb = m_intervalProb->GetValue ();
++      NS_LOG_DEBUG ("IntervalProb = " << intervalProb);
++
++      // Based on TR 45.820
++      if (intervalProb < 0.4)
++        {
++          interval = Days (1);
++        }
++      else if (0.4 <= intervalProb  && intervalProb < 0.8)
++        {
++          interval = Hours (2);
++        }
++      else if (0.8 <= intervalProb  && intervalProb < 0.95)
++        {
++          interval = Hours (1);
++        }
++      else
++        {
++          interval = Minutes (30);
++        }
++    }
++  else
++    {
++      interval = m_period;
++    }
++
++  app->SetInterval (interval);
++  NS_LOG_DEBUG ("Created an application with interval = " <<
++                interval.GetHours () << " hours");
++
++  app->SetInitialDelay (Seconds (m_initialDelay->GetValue (0, interval.GetSeconds ())));
++  app->SetPacketSize (m_pktSize);
++  app->SetIsInterferer();
++  if (m_pktSizeRV)
++    {
++      app->SetPacketSizeRandomVariable (m_pktSizeRV);
++    }
++
++  app->SetNode (node);
++  node->AddApplication (app);
++
++  return app;
++}
++
+ void
+ PeriodicSenderHelper::SetPeriod (Time period)
+ {
+diff --git a/helper/periodic-sender-helper.h b/helper/periodic-sender-helper.h
+index 1c01aec..c3ac36a 100644
+--- a/helper/periodic-sender-helper.h
++++ b/helper/periodic-sender-helper.h
+@@ -49,6 +49,7 @@ public:
+ 
+   ApplicationContainer Install (NodeContainer c) const;
+ 
++  ApplicationContainer InstallI (NodeContainer c) const;
+   ApplicationContainer Install (Ptr<Node> node) const;
+ 
+   /**
+@@ -68,6 +69,7 @@ public:
+ 
+ private:
+   Ptr<Application> InstallPriv (Ptr<Node> node) const;
++  Ptr<Application> InstallPrivI (Ptr<Node> node) const;
+ 
+   ObjectFactory m_factory;
+ 
+diff --git a/model/end-device-lora-phy.h b/model/end-device-lora-phy.h
+index f587b14..a9eeeb6 100644
+--- a/model/end-device-lora-phy.h
++++ b/model/end-device-lora-phy.h
+@@ -149,6 +149,8 @@ public:
+   // Implementation of LoraPhy's pure virtual functions
+   virtual void StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+                              uint8_t sf, Time duration, double frequencyMHz) = 0;
++  virtual void StartReceiveI (Ptr<Packet> packet, double rxPowerDbm,
++                             uint8_t sf, Time duration, double frequencyMHz) = 0;
+ 
+   // Implementation of LoraPhy's pure virtual functions
+   virtual void EndReceive (Ptr<Packet> packet,
+diff --git a/model/end-device-lorawan-mac.cc b/model/end-device-lorawan-mac.cc
+index b4ad063..955bf6b 100644
+--- a/model/end-device-lorawan-mac.cc
++++ b/model/end-device-lorawan-mac.cc
+@@ -379,7 +379,11 @@ EndDeviceLorawanMac::SendToPhy (Ptr<Packet> packetToSend)
+   Ptr<LogicalLoraChannel> txChannel = GetChannelForTx ();
+ 
+   NS_LOG_DEBUG ("PacketToSend: " << packetToSend);
+-  m_phy->Send (packetToSend, params, txChannel->GetFrequency (), m_txPower);
++  if(!packetToSend->GetIsInterferer())
++    m_phy->Send (packetToSend, params, txChannel->GetFrequency (), m_txPower);
++  else
++    m_phy->SendI (packetToSend, params, txChannel->GetFrequency (), m_txPower);
++
+ 
+   //////////////////////////////////////////////
+   // Register packet transmission for duty cycle
+diff --git a/model/end-device-status.cc b/model/end-device-status.cc
+index aeb2d67..09ab9a2 100644
+--- a/model/end-device-status.cc
++++ b/model/end-device-status.cc
+@@ -325,15 +325,23 @@ EndDeviceStatus::ReceivedPacketInfo
+ EndDeviceStatus::GetLastReceivedPacketInfo (void)
+ {
+   NS_LOG_FUNCTION_NOARGS ();
++  NS_LOG_INFO("HERE");
+   auto it = m_receivedPacketList.rbegin ();
++  // return EndDeviceStatus::ReceivedPacketInfo ();
++
+   if (it != m_receivedPacketList.rend ())
+     {
++        NS_LOG_INFO("HERE3");
++
+       return it->second;
+     }
+   else
+     {
++        NS_LOG_INFO("HEREq");
+       return EndDeviceStatus::ReceivedPacketInfo ();
+     }
++
++  NS_LOG_INFO("HERE");
+ }
+ 
+ Ptr<Packet const>
+diff --git a/model/gateway-lora-phy.h b/model/gateway-lora-phy.h
+index a4b6f8a..cec997c 100644
+--- a/model/gateway-lora-phy.h
++++ b/model/gateway-lora-phy.h
+@@ -55,12 +55,16 @@ public:
+ 
+   virtual void StartReceive (Ptr<Packet> packet, double rxPowerDbm, uint8_t sf, Time duration,
+                              double frequencyMHz) = 0;
+-
++  virtual void StartReceiveI (Ptr<Packet> packet, double rxPowerDbm, uint8_t sf, Time duration,
++                             double frequencyMHz) = 0;
+   virtual void EndReceive (Ptr<Packet> packet, Ptr<LoraInterferenceHelper::Event> event) = 0;
+ 
+   virtual void Send (Ptr<Packet> packet, LoraTxParameters txParams, double frequencyMHz,
+                      double txPowerDbm) = 0;
++  virtual void EndReceiveI (Ptr<Packet> packet, Ptr<LoraInterferenceHelper::Event> event) = 0;
+ 
++  virtual void SendI (Ptr<Packet> packet, LoraTxParameters txParams, double frequencyMHz,
++                     double txPowerDbm) = 0;
+   virtual void TxFinished (Ptr<Packet> packet);
+ 
+   bool IsTransmitting (void);
+diff --git a/model/gateway-lorawan-mac.cc b/model/gateway-lorawan-mac.cc
+index d3a6b20..50f2fa5 100644
+--- a/model/gateway-lorawan-mac.cc
++++ b/model/gateway-lorawan-mac.cc
+@@ -98,8 +98,10 @@ GatewayLorawanMac::Send (Ptr<Packet> packet)
+                               (frequency));
+ 
+   // Send the packet to the PHY layer to send it on the channel
+-  m_phy->Send (packet, params, frequency, sendingPower);
+-
++  if(!packet->GetIsInterferer())
++    m_phy->Send (packet, params, frequency, sendingPower);
++  else
++    m_phy->SendI (packet, params, frequency, sendingPower);
+   m_sentNewPacket (packet);
+ }
+ 
+diff --git a/model/logical-lora-channel-helper.cc b/model/logical-lora-channel-helper.cc
+index 47cecbc..9dcab8d 100644
+--- a/model/logical-lora-channel-helper.cc
++++ b/model/logical-lora-channel-helper.cc
+@@ -109,9 +109,9 @@ LogicalLoraChannelHelper::GetSubBandFromFrequency (double frequency)
+           return *it;
+         }
+     }
+-
++  
+   NS_LOG_ERROR ("Requested frequency: " << frequency);
+-  NS_ABORT_MSG ("Warning: frequency is outside any known SubBand.");
++  // NS_ABORT_MSG ("Warning: frequency is outside any kno(wn SubBand." << frequency);
+ 
+   return 0;     // If no SubBand is found, return 0
+ }
+diff --git a/model/lora-channel.cc b/model/lora-channel.cc
+index 7506e60..797bcc5 100644
+--- a/model/lora-channel.cc
++++ b/model/lora-channel.cc
+@@ -85,6 +85,15 @@ LoraChannel::Add (Ptr<LoraPhy> phy)
+   m_phyList.push_back (phy);
+ }
+ 
++void
++LoraChannel::AddI (Ptr<LoraPhy> phy)
++{
++  NS_LOG_FUNCTION (this << phy);
++
++  // Add the new phy to the vector
++  m_phyListI.push_back (phy);
++}
++
+ void
+ LoraChannel::Remove (Ptr<LoraPhy> phy)
+ {
+@@ -111,6 +120,10 @@ LoraChannel::Send (Ptr< LoraPhy > sender, Ptr< Packet > packet,
+                    double txPowerDbm, LoraTxParameters txParams,
+                    Time duration, double frequencyMHz) const
+ {
++  NS_LOG_INFO("HERE "<< m_phyListI.size() << " " << m_phyList.size());
++  // if(packet->GetIsInterferer()){
++  //   return;
++  // }
+   NS_LOG_FUNCTION (this << sender << packet << txPowerDbm << txParams <<
+                    duration << frequencyMHz);
+ 
+@@ -125,6 +138,7 @@ LoraChannel::Send (Ptr< LoraPhy > sender, Ptr< Packet > packet,
+   // Cycle over all registered PHYs
+   uint32_t j = 0;
+   std::vector<Ptr<LoraPhy> >::const_iterator i;
++
+   for (i = m_phyList.begin (); i != m_phyList.end (); i++, j++)
+     {
+       // Do not deliver to the sender (*i is the current PHY)
+@@ -135,9 +149,9 @@ LoraChannel::Send (Ptr< LoraPhy > sender, Ptr< Packet > packet,
+             GetObject<MobilityModel> ();
+ 
+           NS_LOG_INFO ("Receiver mobility: " <<
+-                       receiverMobility->GetPosition ());
++                      receiverMobility->GetPosition ());
+ 
+-          // Compute delay using the delay model
++          // Compute delay using the delay modelb
+           Time delay = m_delay->GetDelay (senderMobility, receiverMobility);
+ 
+           // Compute received power using the loss model
+@@ -178,7 +192,87 @@ LoraChannel::Send (Ptr< LoraPhy > sender, Ptr< Packet > packet,
+           // Fire the trace source for sent packet
+           m_packetSent (packet);
+         }
+-    }
++  }
++}
++
++void
++LoraChannel::SendI (Ptr< LoraPhy > sender, Ptr< Packet > packet,
++                   double txPowerDbm, LoraTxParameters txParams,
++                   Time duration, double frequencyMHz) const
++{
++  NS_LOG_INFO("HERE "<< m_phyListI.size() << " " << m_phyList.size());
++  // if(packet->GetIsInterferer()){
++  //   return;
++  // }
++  NS_LOG_FUNCTION (this << sender << packet << txPowerDbm << txParams <<
++                   duration << frequencyMHz);
++
++  // Get the mobility model of the sender
++  Ptr<MobilityModel> senderMobility = sender->GetMobility ()->GetObject<MobilityModel> ();
++
++  NS_ASSERT (senderMobility != 0);     // Make sure it's available
++
++  NS_LOG_INFO ("Starting cycle over all " << m_phyListI.size () << " PHYs");
++  NS_LOG_INFO ("Sender mobility: " << senderMobility->GetPosition ());
++
++  // Cycle over all registered PHYs
++  uint32_t j = 0;
++  std::vector<Ptr<LoraPhy> >::const_iterator i;
++
++  for (i = m_phyListI.begin (); i != m_phyListI.end (); i++, j++)
++    {
++      // Do not deliver to the sender (*i is the current PHY)
++      if (sender != (*i))
++        {
++          // Get the receiver's mobility model
++          Ptr<MobilityModel> receiverMobility = (*i)->GetMobility ()->
++            GetObject<MobilityModel> ();
++
++          NS_LOG_INFO ("Receiver mobility: " <<
++                      receiverMobility->GetPosition ());
++
++          // Compute delay using the delay modelb
++          Time delay = m_delay->GetDelay (senderMobility, receiverMobility);
++
++          // Compute received power using the loss model
++          double rxPowerDbm = GetRxPower (txPowerDbm, senderMobility,
++                                          receiverMobility);
++
++          NS_LOG_DEBUG ("Propagation: txPower=" << txPowerDbm <<
++                        "dbm, rxPower=" << rxPowerDbm << "dbm, " <<
++                        "distance=" << senderMobility->GetDistanceFrom (receiverMobility) <<
++                        "m, delay=" << delay);
++
++          // Get the id of the destination PHY to correctly format the context
++          Ptr<NetDevice> dstNetDevice = m_phyListI[j]->GetDevice ();
++          uint32_t dstNode = 0;
++          if (dstNetDevice != 0)
++            {
++              NS_LOG_INFO ("Getting node index from NetDevice, since it exists");
++              dstNode = dstNetDevice->GetNode ()->GetId ();
++              NS_LOG_DEBUG ("dstNode = " << dstNode);
++            }
++          else
++            {
++              NS_LOG_INFO ("No net device connected to the PHY, using context 0");
++            }
++
++          // Create the parameters object based on the calculations above
++          LoraChannelParameters parameters;
++          parameters.rxPowerDbm = rxPowerDbm;
++          parameters.sf = txParams.sf;
++          parameters.duration = duration;
++          parameters.frequencyMHz = frequencyMHz;
++
++          // Schedule the receive event
++          NS_LOG_INFO ("Scheduling reception of the packet");
++          Simulator::ScheduleWithContext (dstNode, delay, &LoraChannel::ReceiveI,
++                                          this, j, packet, parameters);
++
++          // Fire the trace source for sent packet
++          m_packetSent (packet);
++        }
++  }
+ }
+ 
+ void
+@@ -186,10 +280,26 @@ LoraChannel::Receive (uint32_t i, Ptr<Packet> packet,
+                       LoraChannelParameters parameters) const
+ {
+   NS_LOG_FUNCTION (this << i << packet << parameters);
++  if(!packet->GetIsInterferer()) {
++    // Call the appropriate PHY instance to let it begin reception
++    m_phyList[i]->StartReceive (packet, parameters.rxPowerDbm, parameters.sf,
++                                parameters.duration, parameters.frequencyMHz);
++  }
++  else {
++    m_phyList[i]->StartReceiveI (packet, parameters.rxPowerDbm, parameters.sf,
++                                parameters.duration, parameters.frequencyMHz);
++  }
++}
++
++void
++LoraChannel::ReceiveI (uint32_t i, Ptr<Packet> packet,
++                      LoraChannelParameters parameters) const
++{
++  NS_LOG_FUNCTION (this << i << packet << parameters);
+ 
+-  // Call the appropriate PHY instance to let it begin reception
+-  m_phyList[i]->StartReceive (packet, parameters.rxPowerDbm, parameters.sf,
++  m_phyListI[i]->StartReceive (packet, parameters.rxPowerDbm, parameters.sf,
+                               parameters.duration, parameters.frequencyMHz);
++  
+ }
+ 
+ double
+diff --git a/model/lora-channel.h b/model/lora-channel.h
+index a6de5dc..d438680 100644
+--- a/model/lora-channel.h
++++ b/model/lora-channel.h
+@@ -81,8 +81,8 @@ public:
+   virtual ~LoraChannel ();
+ 
+   // Inherited from Channel.
+-  virtual std::size_t GetNDevices (void) const;
+-  virtual Ptr<NetDevice> GetDevice (std::size_t i) const;
++  virtual uint32_t GetNDevices (void) const;
++  virtual Ptr<NetDevice> GetDevice (uint32_t i) const;
+ 
+   /**
+     * Construct a LoraChannel with a loss and delay model.
+@@ -102,7 +102,7 @@ public:
+     * \param phy The physical layer to add.
+     */
+   void Add (Ptr<LoraPhy> phy);
+-
++  void AddI (Ptr<LoraPhy> phy);
+   /**
+     * Remove a physical layer from the LoraChannel.
+     *
+@@ -137,7 +137,9 @@ public:
+   void Send (Ptr<LoraPhy> sender, Ptr<Packet> packet, double txPowerDbm,
+              LoraTxParameters txParams, Time duration, double frequencyMHz)
+   const;
+-
++  void SendI (Ptr<LoraPhy> sender, Ptr<Packet> packet, double txPowerDbm,
++             LoraTxParameters txParams, Time duration, double frequencyMHz)
++  const;
+   /**
+     * Compute the received power when transmitting from a point to another one.
+     *
+@@ -167,12 +169,15 @@ private:
+     */
+   void Receive (uint32_t i, Ptr<Packet> packet,
+                 LoraChannelParameters parameters) const;
++  void ReceiveI (uint32_t i, Ptr<Packet> packet,
++                LoraChannelParameters parameters) const;
+ 
+   /**
+     * The vector containing the PHYs that are currently connected to the
+     * channel.
+     */
+   std::vector<Ptr<LoraPhy> > m_phyList;
++  std::vector<Ptr<LoraPhy> > m_phyListI;
+ 
+   /**
+     * Pointer to the loss model.
+diff --git a/model/lora-interference-helper.cc b/model/lora-interference-helper.cc
+index 4ecafc5..a2d4f66 100644
+--- a/model/lora-interference-helper.cc
++++ b/model/lora-interference-helper.cc
+@@ -190,7 +190,7 @@ LoraInterferenceHelper::Add (Time duration, double rxPower, uint8_t spreadingFac
+                              Ptr<Packet> packet, double frequencyMHz)
+ {
+ 
+-  NS_LOG_FUNCTION (this << duration.GetSeconds () << rxPower << unsigned(spreadingFactor) << packet
++  NS_LOG_FUNCTION (this << "adding " << duration.GetSeconds () << rxPower << unsigned(spreadingFactor) << packet
+                         << frequencyMHz);
+ 
+   // Create an event based on the parameters
+@@ -245,6 +245,119 @@ LoraInterferenceHelper::PrintEvents (std::ostream &stream)
+     }
+ }
+ 
++uint8_t
++LoraInterferenceHelper::IsDestroyedByInterferenceI (Ptr<LoraInterferenceHelper::Event> event)
++{
++  NS_LOG_FUNCTION (this << event);
++
++  NS_LOG_INFO ("Current number of events in LoraInterferenceHelper: " << m_events.size ());
++
++  // We want to see the interference affecting this event: cycle through events
++  // that overlap with this one and see whether it survives the interference or
++  // not.
++
++  // Gather information about the event
++  double rxPowerDbm = event->GetRxPowerdBm ();
++  uint8_t sf = event->GetSpreadingFactor ();
++  double frequency = event->GetFrequency ();
++
++  // Handy information about the time frame when the packet was received
++  Time now = Simulator::Now ();
++  Time duration = event->GetDuration ();
++  Time packetStartTime = now - duration;
++  Time packetEndTime = now;
++
++  // Get the list of interfering events
++  std::list<Ptr<LoraInterferenceHelper::Event>>::iterator it;
++
++  // Energy for interferers of various SFs
++  std::vector<double> cumulativeInterferenceEnergy (6, 0);
++
++  // Cycle over the events
++  for (it = m_events.begin (); it != m_events.end ();)
++    {
++      // Pointer to the current interferer
++      Ptr<LoraInterferenceHelper::Event> interferer = *it;
++
++      // Only consider the current event if the channel is the same: we
++      // assume there's no interchannel interference. Also skip the current
++      // event if it's the same that we want to analyze.
++      if (!(interferer->GetFrequency () == frequency) || interferer == event)
++        {
++          NS_LOG_DEBUG ("Different channel or same event");
++          it++;
++          continue; // Continues from the first line inside the for cycle
++        }
++
++      NS_LOG_DEBUG ("Interferer on same channel");
++
++      // Gather information about this interferer
++      uint8_t interfererSf = interferer->GetSpreadingFactor ();
++      double interfererPower = interferer->GetRxPowerdBm ();
++      Time interfererStartTime = interferer->GetStartTime ();
++      Time interfererEndTime = interferer->GetEndTime ();
++
++      NS_LOG_INFO ("Found an interferer: sf = " << unsigned(interfererSf)
++                                                << ", power = " << interfererPower
++                                                << ", start time = " << interfererStartTime
++                                                << ", end time = " << interfererEndTime);
++
++      // Compute the fraction of time the two events are overlapping
++      Time overlap = GetOverlapTime (event, interferer);
++
++      NS_LOG_DEBUG ("The two events overlap for " << overlap.GetSeconds () << " s.");
++
++      // Compute the equivalent energy of the interference
++      // Power [mW] = 10^(Power[dBm]/10)
++      // Power [W] = Power [mW] / 1000
++      double interfererPowerW = pow (10, interfererPower / 10) / 1000;
++      // Energy [J] = Time [s] * Power [W]
++      double interferenceEnergy = overlap.GetSeconds () * interfererPowerW;
++      cumulativeInterferenceEnergy.at (unsigned(interfererSf) - 7) += interferenceEnergy;
++      NS_LOG_DEBUG ("Interferer power in W: " << interfererPowerW);
++      NS_LOG_DEBUG ("Interference energy: " << interferenceEnergy);
++      it++;
++    }
++
++  // For each SF, check if there was destructive interference
++  for (uint8_t currentSf = uint8_t (7); currentSf <= uint8_t (12); currentSf++)
++    {
++      NS_LOG_DEBUG ("Cumulative Interference Energy: "
++                    << cumulativeInterferenceEnergy.at (unsigned(currentSf) - 7));
++
++      // Use the computed cumulativeInterferenceEnergy to determine whether the
++      // interference with this SF destroys the packet
++      double signalPowerW = pow (10, rxPowerDbm / 10) / 1000;
++      double signalEnergy = duration.GetSeconds () * signalPowerW;
++      NS_LOG_DEBUG ("Signal power in W: " << signalPowerW);
++      NS_LOG_DEBUG ("Signal energy: " << signalEnergy);
++
++      // Check whether the packet survives the interference of this SF
++      double snirIsolation = m_collisionSnir[unsigned(sf) - 7][unsigned(currentSf) - 7];
++      NS_LOG_DEBUG ("The needed isolation to survive is " << snirIsolation << " dB");
++      double snir =
++          10 * log10 (signalEnergy / cumulativeInterferenceEnergy.at (unsigned(currentSf) - 7));
++      NS_LOG_DEBUG ("The current SNIR is " << snir << " dB");
++
++      if (snir >= snirIsolation)
++        {
++          // Move on and check the rest of the interferers
++          NS_LOG_DEBUG ("Packet survived interference with SF " << currentSf);
++        }
++      else
++        {
++          NS_LOG_DEBUG ("Packet destroyed by interference with SF" << unsigned(currentSf));
++
++          return currentSf;
++        }
++    }
++  // If we get to here, it means that the packet survived all interference
++  NS_LOG_DEBUG ("Packet survived all interference");
++
++  // Since the packet was not destroyed, we return 0.
++  return uint8_t (0);
++}
++
+ uint8_t
+ LoraInterferenceHelper::IsDestroyedByInterference (Ptr<LoraInterferenceHelper::Event> event)
+ {
+diff --git a/model/lora-interference-helper.h b/model/lora-interference-helper.h
+index 2cf3edb..6b08723 100644
+--- a/model/lora-interference-helper.h
++++ b/model/lora-interference-helper.h
+@@ -174,6 +174,7 @@ public:
+    * loss.
+    */
+   uint8_t IsDestroyedByInterference (Ptr<LoraInterferenceHelper::Event> event);
++  uint8_t IsDestroyedByInterferenceI (Ptr<LoraInterferenceHelper::Event> event);
+ 
+   /**
+    * Compute the time duration in which two given events are overlapping.
+diff --git a/model/lora-phy.h b/model/lora-phy.h
+index 034a2cd..2d82991 100644
+--- a/model/lora-phy.h
++++ b/model/lora-phy.h
+@@ -119,7 +119,9 @@ public:
+   virtual void StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+                              uint8_t sf, Time duration,
+                              double frequencyMHz) = 0;
+-
++  virtual void StartReceiveI (Ptr<Packet> packet, double rxPowerDbm,
++                             uint8_t sf, Time duration,
++                             double frequencyMHz) = 0;
+   /**
+    * Finish reception of a packet.
+    *
+@@ -145,7 +147,19 @@ public:
+    */
+   virtual void Send (Ptr<Packet> packet, LoraTxParameters txParams,
+                      double frequencyMHz, double txPowerDbm) = 0;
++  virtual void EndReceiveI (Ptr<Packet> packet,
++                           Ptr<LoraInterferenceHelper::Event> event) = 0;
+ 
++  /**
++   * Instruct the PHY to send a packet according to some parameters.
++   *
++   * \param packet The packet to send.
++   * \param txParams The desired transmission parameters.
++   * \param frequencyMHz The frequency on which to transmit.
++   * \param txPowerDbm The power in dBm with which to transmit the packet.
++   */
++  virtual void SendI (Ptr<Packet> packet, LoraTxParameters txParams,
++                     double frequencyMHz, double txPowerDbm) = 0;
+   /**
+    * Whether this device is transmitting or not.
+    *
+diff --git a/model/periodic-sender.cc b/model/periodic-sender.cc
+index d5b6ce8..db94c23 100644
+--- a/model/periodic-sender.cc
++++ b/model/periodic-sender.cc
+@@ -55,8 +55,8 @@ PeriodicSender::PeriodicSender ()
+   : m_interval (Seconds (10)),
+   m_initialDelay (Seconds (1)),
+   m_basePktSize (10),
+-  m_pktSizeRV (0)
+-
++  m_pktSizeRV (0),
++  m_isInterferer(0)
+ {
+   NS_LOG_FUNCTION_NOARGS ();
+ }
+@@ -101,6 +101,11 @@ PeriodicSender::SetPacketSize (uint8_t size)
+   m_basePktSize = size;
+ }
+ 
++void
++PeriodicSender::SetIsInterferer ()
++{
++  m_isInterferer = 1;
++}
+ 
+ void
+ PeriodicSender::SendPacket (void)
+@@ -112,11 +117,11 @@ PeriodicSender::SendPacket (void)
+   if (m_pktSizeRV)
+     {
+       int randomsize = m_pktSizeRV->GetInteger ();
+-      packet = Create<Packet> (m_basePktSize + randomsize);
++      packet = Create<Packet> (m_basePktSize + randomsize, m_isInterferer);
+     }
+   else
+     {
+-      packet = Create<Packet> (m_basePktSize);
++      packet = Create<Packet> (m_basePktSize, m_isInterferer);
+     }
+   m_mac->Send (packet);
+ 
+@@ -124,7 +129,7 @@ PeriodicSender::SendPacket (void)
+   m_sendEvent = Simulator::Schedule (m_interval, &PeriodicSender::SendPacket,
+                                      this);
+ 
+-  NS_LOG_DEBUG ("Sent packet " << packet << " of size " << packet->GetSize());
++  NS_LOG_DEBUG ("Sent packet " << packet->ToString() << " of size " << packet->GetSize());
+ }
+ 
+ void
+diff --git a/model/periodic-sender.h b/model/periodic-sender.h
+index ccf1752..e9cfc96 100644
+--- a/model/periodic-sender.h
++++ b/model/periodic-sender.h
+@@ -58,6 +58,11 @@ public:
+    * Set packet size
+    */
+   void SetPacketSize (uint8_t size);
++  
++  /**
++   * Set packet size
++   */
++  void SetIsInterferer ();
+ 
+   /**
+    * Set if using randomness in the packet size
+@@ -105,7 +110,7 @@ private:
+    */
+   uint8_t m_basePktSize;
+ 
+-
++  uint8_t m_isInterferer;
+   /**
+    * The random variable that adds bytes to the packet size
+    */
+diff --git a/model/simple-end-device-lora-phy.cc b/model/simple-end-device-lora-phy.cc
+index 2010cdd..4648eae 100644
+--- a/model/simple-end-device-lora-phy.cc
++++ b/model/simple-end-device-lora-phy.cc
+@@ -29,7 +29,7 @@ namespace lorawan {
+ 
+ NS_LOG_COMPONENT_DEFINE ("SimpleEndDeviceLoraPhy");
+ 
+-NS_OBJECT_ENSURE_REGISTERED (SimpleEndDeviceLoraPhy);
++NS_OBJECT_ENSURE_REGISTERED (SimpleEndDeviceLoraPhy) ;
+ 
+ TypeId
+ SimpleEndDeviceLoraPhy::GetTypeId (void)
+@@ -87,6 +87,56 @@ SimpleEndDeviceLoraPhy::Send (Ptr<Packet> packet, LoraTxParameters txParams,
+   // For reference see SX1272 datasheet, section 4.1.6
+   Simulator::Schedule (duration, &EndDeviceLoraPhy::SwitchToStandby, this);
+ 
++  // Schedule the txFinished callback, if it was set
++  // The call is scheduled just after the switch to standby in case the upper
++  // layer wishes to change the state. This ensures that it will find a PHY in
++  // STANDBY mode.
++  if (!m_txFinishedCallback.IsNull ())
++    {
++      // Simulator::Schedule (duration + NanoSeconds (10),
++      //                      &SimpleEndDeviceLoraPhy::m_txFinishedCallback, this,
++      //                      packet);
++    }
++
++
++  // Call the trace source
++  if (m_device)
++    {
++      m_startSending (packet, m_device->GetNode ()->GetId ());
++    }
++  else
++    {
++      m_startSending (packet, 0);
++    }
++}
++
++void
++SimpleEndDeviceLoraPhy::SendI (Ptr<Packet> packet, LoraTxParameters txParams,
++                              double frequencyMHz, double txPowerDbm)
++{
++  NS_LOG_FUNCTION (this << packet << txParams << frequencyMHz << txPowerDbm);
++
++  // Compute the duration of the transmission
++  Time duration = GetOnAirTime (packet, txParams);
++
++  // We can send the packet: switch to the TX state
++  SwitchToTx (txPowerDbm);
++
++  // Tag the packet with information about its Spreading Factor
++  LoraTag tag;
++  packet->RemovePacketTag (tag);
++  tag.SetSpreadingFactor (txParams.sf);
++  packet->AddPacketTag (tag);
++
++  // Send the packet over the channel
++  NS_LOG_INFO ("Sending the packet in the channel");
++  m_channel->Send (this, packet, txPowerDbm, txParams, duration, frequencyMHz);
++  m_channel->SendI (this, packet, txPowerDbm, txParams, duration, frequencyMHz);
++
++  // Schedule the switch back to STANDBY mode.
++  // For reference see SX1272 datasheet, section 4.1.6
++  Simulator::Schedule (duration, &EndDeviceLoraPhy::SwitchToStandby, this);
++
+   // Schedule the txFinished callback, if it was set
+   // The call is scheduled just after the switch to standby in case the upper
+   // layer wishes to change the state. This ensures that it will find a PHY in
+@@ -98,6 +148,7 @@ SimpleEndDeviceLoraPhy::Send (Ptr<Packet> packet, LoraTxParameters txParams,
+                            packet);
+     }
+ 
++  NS_LOG_INFO ("interference3 Sending the packet in the channel");
+ 
+   // Call the trace source
+   if (m_device)
+@@ -110,6 +161,7 @@ SimpleEndDeviceLoraPhy::Send (Ptr<Packet> packet, LoraTxParameters txParams,
+     }
+ }
+ 
++
+ void
+ SimpleEndDeviceLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+                                       uint8_t sf, Time duration, double frequencyMHz)
+@@ -118,6 +170,14 @@ SimpleEndDeviceLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+   NS_LOG_FUNCTION (this << packet << rxPowerDbm << unsigned (sf) << duration <<
+                    frequencyMHz);
+ 
++  if(packet->GetIsInterferer()){
++    // Ptr<LoraInterferenceHelper::Event> event;
++    // event = m_interference.Add (duration, rxPowerDbm, sf, packet, frequencyMHz);
++    // EventId endReceiveEventId =
++    // Simulator::Schedule (duration, &LoraPhy::EndReceive, this, packet, event);
++    return;
++  }
++
+   // Notify the LoraInterferenceHelper of the impinging signal, and remember
+   // the event it creates. This will be used then to correctly handle the end
+   // of reception event.
+@@ -126,7 +186,7 @@ SimpleEndDeviceLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+   // change (and making the interference relevant) while the interference is
+   // still incoming.
+ 
+-  Ptr<LoraInterferenceHelper::Event> event;
++  Ptr<LoraInterferenceHelper::Event> event, event2;
+   event = m_interference.Add (duration, rxPowerDbm, sf, packet, frequencyMHz);
+ 
+   // Switch on the current PHY state
+@@ -242,7 +302,12 @@ SimpleEndDeviceLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+ 
+             Simulator::Schedule (duration, &LoraPhy::EndReceive, this, packet,
+                                  event);
+-
++            // Simulator::Schedule (duration, &LoraPhy::EndReceive, this, packet,
++            //                      event2);
++            // Simulator::Schedule (duration, &LoraPhy::EndReceive, this, packet,
++            //                      event3);
++            // Simulator::Schedule (duration, &LoraPhy::EndReceive, this, packet,
++            //                      event4);
+             // Fire the beginning of reception trace source
+             m_phyRxBeginTrace (packet);
+           }
+@@ -250,6 +315,28 @@ SimpleEndDeviceLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+     }
+ }
+ 
++void
++SimpleEndDeviceLoraPhy::StartReceiveI (Ptr<Packet> packet, double rxPowerDbm,
++                                      uint8_t sf, Time duration, double frequencyMHz)
++{
++
++  NS_LOG_FUNCTION (this << packet << rxPowerDbm << unsigned (sf) << duration <<
++                   frequencyMHz);
++
++  // Notify the LoraInterferenceHelper of the impinging signal, and remember
++  // the event it creates. This will be used then to correctly handle the end
++  // of reception event.
++  //
++  // We need to do this regardless of our state or frequency, since these could
++  // change (and making the interference relevant) while the interference is
++  // still incoming.
++
++  Ptr<LoraInterferenceHelper::Event> event;
++  event = m_interference.Add (duration, rxPowerDbm, sf, packet, frequencyMHz);
++  
++  Simulator::Schedule (duration, &LoraPhy::EndReceiveI, this, packet, event);
++}
++
+ void
+ SimpleEndDeviceLoraPhy::EndReceive (Ptr<Packet> packet,
+                                     Ptr<LoraInterferenceHelper::Event> event)
+@@ -309,5 +396,66 @@ SimpleEndDeviceLoraPhy::EndReceive (Ptr<Packet> packet,
+ 
+     }
+ }
++
++void
++SimpleEndDeviceLoraPhy::EndReceiveI (Ptr<Packet> packet,
++                                    Ptr<LoraInterferenceHelper::Event> event)
++{
++  NS_LOG_FUNCTION (this << packet << event);
++
++  // Automatically switch to Standby in either case
++  SwitchToStandby ();
++
++  // Fire the trace source
++  m_phyRxEndTrace (packet);
++
++  // Call the LoraInterferenceHelper to determine whether there was destructive
++  // interference on this event.
++  bool packetDestroyed = m_interference.IsDestroyedByInterference (event);
++
++  // Fire the trace source if packet was destroyed
++  if (false)
++    {
++      NS_LOG_INFO ("Packet destroyed by interference");
++
++      if (m_device)
++        {
++          m_interferedPacket (packet, m_device->GetNode ()->GetId ());
++        }
++      else
++        {
++          m_interferedPacket (packet, 0);
++        }
++
++      // If there is one, perform the callback to inform the upper layer of the
++      // lost packet
++      if (!m_rxFailedCallback.IsNull ())
++        {
++          m_rxFailedCallback (packet);
++        }
++
++    }
++  else
++    {
++      NS_LOG_INFO ("Packet received correctly");
++
++      if (m_device)
++        {
++          m_successfullyReceivedPacket (packet, m_device->GetNode ()->GetId ());
++        }
++      else
++        {
++          m_successfullyReceivedPacket (packet, 0);
++        }
++
++      // If there is one, perform the callback to inform the upper layer
++      if (!m_rxOkCallback.IsNull ())
++        {
++          m_rxOkCallback (packet);
++        }
++
++    }
++}
++
+ }
+ }
+diff --git a/model/simple-end-device-lora-phy.h b/model/simple-end-device-lora-phy.h
+index 9df9582..1ab0d7b 100644
+--- a/model/simple-end-device-lora-phy.h
++++ b/model/simple-end-device-lora-phy.h
+@@ -50,14 +50,18 @@ public:
+   // Implementation of EndDeviceLoraPhy's pure virtual functions
+   virtual void StartReceive (Ptr<Packet> packet, double rxPowerDbm,
+                              uint8_t sf, Time duration, double frequencyMHz);
+-
++  virtual void StartReceiveI (Ptr<Packet> packet, double rxPowerDbm,
++                             uint8_t sf, Time duration, double frequencyMHz);
+   // Implementation of LoraPhy's pure virtual functions
+   virtual void EndReceive (Ptr<Packet> packet,
+                            Ptr<LoraInterferenceHelper::Event> event);
+-
++  virtual void EndReceiveI (Ptr<Packet> packet,
++                           Ptr<LoraInterferenceHelper::Event> event);
+   // Implementation of LoraPhy's pure virtual functions
+   virtual void Send (Ptr<Packet> packet, LoraTxParameters txParams,
+                      double frequencyMHz, double txPowerDbm);
++  virtual void SendI (Ptr<Packet> packet, LoraTxParameters txParams,
++                     double frequencyMHz, double txPowerDbm);
+ 
+ private:
+ };
+diff --git a/model/simple-gateway-lora-phy.cc b/model/simple-gateway-lora-phy.cc
+index a08a7f9..99ef620 100644
+--- a/model/simple-gateway-lora-phy.cc
++++ b/model/simple-gateway-lora-phy.cc
+@@ -68,6 +68,7 @@ SimpleGatewayLoraPhy::Send (Ptr<Packet> packet, LoraTxParameters txParams, doubl
+ 
+   // Interrupt all receive operations
+   std::list<Ptr<SimpleGatewayLoraPhy::ReceptionPath>>::iterator it;
++  
+   for (it = m_receptionPaths.begin (); it != m_receptionPaths.end (); ++it)
+     {
+ 
+@@ -96,7 +97,6 @@ SimpleGatewayLoraPhy::Send (Ptr<Packet> packet, LoraTxParameters txParams, doubl
+         }
+     }
+ 
+-  // Send the packet in the channel
+   m_channel->Send (this, packet, txPowerDbm, txParams, duration, frequencyMHz);
+ 
+   Simulator::Schedule (duration, &SimpleGatewayLoraPhy::TxFinished, this, packet);
+@@ -114,6 +114,21 @@ SimpleGatewayLoraPhy::Send (Ptr<Packet> packet, LoraTxParameters txParams, doubl
+     }
+ }
+ 
++void
++SimpleGatewayLoraPhy::SendI (Ptr<Packet> packet, LoraTxParameters txParams, double frequencyMHz,
++                            double txPowerDbm)
++{
++  NS_LOG_FUNCTION (this << packet << frequencyMHz << txPowerDbm);
++
++  // Get the time a packet with these parameters will take to be transmitted
++  Time duration = GetOnAirTime (packet, txParams);
++
++  NS_LOG_DEBUG ("Duration of packet: " << duration << ", SF" << unsigned (txParams.sf));
++
++
++}
++
++
+ void
+ SimpleGatewayLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm, uint8_t sf,
+                                     Time duration, double frequencyMHz)
+@@ -123,6 +138,13 @@ SimpleGatewayLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm, uint8
+   // Fire the trace source
+   m_phyRxBeginTrace (packet);
+ 
++  if(packet->GetIsInterferer()){
++    Ptr<LoraInterferenceHelper::Event> event;
++    event = m_interference.Add (duration, rxPowerDbm, sf, packet, frequencyMHz);
++    EventId endReceiveEventId =
++    Simulator::Schedule (duration, &LoraPhy::EndReceive, this, packet, event);
++    return;
++  }
+   if (m_isTransmitting)
+     {
+       // If we get to this point, there are no demodulators we can use
+@@ -144,11 +166,12 @@ SimpleGatewayLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm, uint8
+       return;
+     }
+ 
++
+   // Add the event to the LoraInterferenceHelper
+   Ptr<LoraInterferenceHelper::Event> event;
+   event = m_interference.Add (duration, rxPowerDbm, sf, packet, frequencyMHz);
+ 
+-  // Cycle over the receive paths to check availability to receive the packet
++  // // Cycle over the receive paths to check availability to receive the packet
+   std::list<Ptr<SimpleGatewayLoraPhy::ReceptionPath>>::iterator it;
+ 
+   for (it = m_receptionPaths.begin (); it != m_receptionPaths.end (); ++it)
+@@ -218,6 +241,16 @@ SimpleGatewayLoraPhy::StartReceive (Ptr<Packet> packet, double rxPowerDbm, uint8
+     }
+ }
+ 
++
++void
++SimpleGatewayLoraPhy::StartReceiveI (Ptr<Packet> packet, double rxPowerDbm, uint8_t sf,
++                                    Time duration, double frequencyMHz)
++{
++  // Add the event to the LoraInterferenceHelper
++  Ptr<LoraInterferenceHelper::Event> event;
++  event = m_interference.Add (duration, rxPowerDbm, sf, packet, frequencyMHz);
++}
++
+ void
+ SimpleGatewayLoraPhy::EndReceive (Ptr<Packet> packet, Ptr<LoraInterferenceHelper::Event> event)
+ {
+@@ -231,7 +264,95 @@ SimpleGatewayLoraPhy::EndReceive (Ptr<Packet> packet, Ptr<LoraInterferenceHelper
+   // method returns a 0.
+   uint8_t packetDestroyed = 0;
+   packetDestroyed = m_interference.IsDestroyedByInterference (event);
++  NS_LOG_INFO("AAA destroyed " << packet << " " << packetDestroyed);
++  // packetDestroyed = 1;
++  // Check whether the packet was destroyed
++  if (packetDestroyed != uint8_t (0))
++    {
++      NS_LOG_DEBUG ("packetDestroyed by " << unsigned (packetDestroyed));
++
++      // Update the packet's LoraTag
++      LoraTag tag;
++      packet->RemovePacketTag (tag);
++      tag.SetDestroyedBy (packetDestroyed);
++      packet->AddPacketTag (tag);
+ 
++      // Fire the trace source
++      if (m_device)
++        {
++          m_interferedPacket (packet, m_device->GetNode ()->GetId ());
++        }
++      else
++        {
++          m_interferedPacket (packet, 0);
++        }
++    }
++  else // Reception was correct
++    {
++      NS_LOG_INFO ("Packet with SF " << unsigned (event->GetSpreadingFactor ())
++                                     << " received correctly");
++
++      // Fire the trace source
++      if (m_device)
++        {
++          m_successfullyReceivedPacket (packet, m_device->GetNode ()->GetId ());
++        }
++      else
++        {
++          m_successfullyReceivedPacket (packet, 0);
++        }
++
++      // Forward the packet to the upper layer
++      if (!m_rxOkCallback.IsNull ())
++        {
++          // Make a copy of the packet
++          // Ptr<Packet> packetCopy = packet->Copy ();
++
++          // Set the receive power and frequency of this packet in the LoraTag: this
++          // information can be useful for upper layers trying to control link
++          // quality.
++          LoraTag tag;
++          packet->RemovePacketTag (tag);
++          tag.SetReceivePower (event->GetRxPowerdBm ());
++          tag.SetFrequency (event->GetFrequency ());
++          packet->AddPacketTag (tag);
++
++          m_rxOkCallback (packet);
++        }
++    }
++
++  // Search for the demodulator that was locked on this event to free it.
++
++  std::list<Ptr<SimpleGatewayLoraPhy::ReceptionPath>>::iterator it;
++
++  for (it = m_receptionPaths.begin (); it != m_receptionPaths.end (); ++it)
++    {
++      Ptr<SimpleGatewayLoraPhy::ReceptionPath> currentPath = *it;
++
++      if (currentPath->GetEvent () == event)
++        {
++          currentPath->Free ();
++          m_occupiedReceptionPaths--;
++          return;
++        }
++    }
++}
++
++void
++SimpleGatewayLoraPhy::EndReceiveI (Ptr<Packet> packet, Ptr<LoraInterferenceHelper::Event> event)
++{
++  NS_LOG_FUNCTION (this << packet << *event);
++
++  // Call the trace source
++  m_phyRxEndTrace (packet);
++
++  // Call the LoraInterferenceHelper to determine whether there was
++  // destructive interference. If the packet is correctly received, this
++  // method returns a 0.
++  uint8_t packetDestroyed = 0;
++  packetDestroyed = m_interference.IsDestroyedByInterference (event);
++  NS_LOG_INFO("AAA destroyed " << packet << " " << packetDestroyed);
++  // packetDestroyed = 1;
+   // Check whether the packet was destroyed
+   if (packetDestroyed != uint8_t (0))
+     {
+diff --git a/model/simple-gateway-lora-phy.h b/model/simple-gateway-lora-phy.h
+index 53c98b9..b1c8572 100644
+--- a/model/simple-gateway-lora-phy.h
++++ b/model/simple-gateway-lora-phy.h
+@@ -48,12 +48,20 @@ public:
+ 
+   virtual void StartReceive (Ptr<Packet> packet, double rxPowerDbm, uint8_t sf,
+                              Time duration, double frequencyMHz);
++  virtual void StartReceiveI (Ptr<Packet> packet, double rxPowerDbm, uint8_t sf,
++                             Time duration, double frequencyMHz);
+ 
+   virtual void EndReceive (Ptr<Packet> packet,
+                            Ptr<LoraInterferenceHelper::Event> event);
+ 
+   virtual void Send (Ptr<Packet> packet, LoraTxParameters txParams,
+                      double frequencyMHz, double txPowerDbm);
++    virtual void EndReceiveI (Ptr<Packet> packet,
++                           Ptr<LoraInterferenceHelper::Event> event);
++
++  virtual void SendI (Ptr<Packet> packet, LoraTxParameters txParams,
++                     double frequencyMHz, double txPowerDbm);
++
+ 
+ private:
+ };
+diff --git a/wscript b/wscript
+index 0d500f8..2bd08a0 100644
+--- a/wscript
++++ b/wscript
+@@ -27,6 +27,7 @@ def build(bld):
+         'model/end-device-lora-phy.cc',
+         'model/simple-end-device-lora-phy.cc',
+         'model/simple-gateway-lora-phy.cc',
++        #'model/simple-gateway-lora-phy-interference.cc',
+         'model/sub-band.cc',
+         'model/logical-lora-channel.cc',
+         'model/logical-lora-channel-helper.cc',
+@@ -90,6 +91,7 @@ def build(bld):
+         'model/end-device-lora-phy.h',
+         'model/simple-end-device-lora-phy.h',
+         'model/simple-gateway-lora-phy.h',
++        #'model/simple-gateway-lora-phy-interference.h',
+         'model/sub-band.h',
+         'model/logical-lora-channel.h',
+         'model/logical-lora-channel-helper.h',
+diff --git a/src/network/model/packet.cc b/src/network/model/packet.cc
+index 51ed315ff..a1fe757a3 100755
+--- a/src/network/model/packet.cc
++++ b/src/network/model/packet.cc
+@@ -180,10 +180,29 @@ Packet::Packet (uint32_t size)
+      * global UID
+      */
+     m_metadata (static_cast<uint64_t> (Simulator::GetSystemId ()) << 32 | m_globalUid, size),
+-    m_nixVector (0)
++    m_nixVector (0),
++    m_isInterferer(0)
+ {
+   m_globalUid++;
+ }
++
++Packet::Packet (uint32_t size, uint8_t isInterferer)
++  : m_buffer (size),
++    m_byteTagList (),
++    m_packetTagList (),
++    /* The upper 32 bits of the packet id in 
++     * metadata is for the system id. For non-
++     * distributed simulations, this is simply 
++     * zero.  The lower 32 bits are for the 
++     * global UID
++     */
++    m_metadata (static_cast<uint64_t> (Simulator::GetSystemId ()) << 32 | m_globalUid, size),
++    m_nixVector (0),
++    m_isInterferer(isInterferer)
++{
++  m_globalUid++;
++}
++
+ Packet::Packet (uint8_t const *buffer, uint32_t size, bool magic)
+   : m_buffer (0, false),
+     m_byteTagList (),
+@@ -253,6 +272,12 @@ Packet::GetNixVector (void) const
+   return m_nixVector;
+ } 
+ 
++uint8_t
++Packet::GetIsInterferer (void) const
++{
++  return m_isInterferer;
++} 
++
+ void
+ Packet::AddHeader (const Header &header)
+ {
+diff --git a/src/network/model/packet.h b/src/network/model/packet.h
+index 6cf81a4f9..7f41605c4 100755
+--- a/src/network/model/packet.h
++++ b/src/network/model/packet.h
+@@ -256,6 +256,7 @@ public:
+    * \param size the size of the zero-filled payload
+    */
+   Packet (uint32_t size);
++  Packet (uint32_t size, uint8_t isInterferer);
+   /**
+    * \brief Create a new packet from the serialized buffer.
+    *
+@@ -655,7 +656,7 @@ public:
+    * \returns the Nix vector
+    */
+   Ptr<NixVector> GetNixVector (void) const; 
+-
++  uint8_t GetIsInterferer (void) const;
+   /**
+    * TracedCallback signature for Ptr<Packet>
+    *
+@@ -717,7 +718,7 @@ private:
+   ByteTagList m_byteTagList;      //!< the ByteTag list
+   PacketTagList m_packetTagList;  //!< the packet's Tag list
+   PacketMetadata m_metadata;      //!< the packet's metadata
+-
++  uint8_t m_isInterferer;
+   /* Please see comments above about nix-vector */
+   Ptr<NixVector> m_nixVector; //!< the packet's Nix vector
+ 
