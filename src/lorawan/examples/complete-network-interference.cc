@@ -63,15 +63,15 @@ int packetSize = 8;
 bool isCEndDevice = false;
 std::string filename = "lorawan_input";
 int seed = 1;
-std::string positionFile = "";
-std::string transmitInputFile = "";
+std::string positionFile = ""; // file to read the positions of the interferers from
+std::string transmitInputFile = ""; // file to read transmission information
 int interfererDevices = 50;
 int interfererPacketSize = 64;
 
+// structure for device position
 struct Device {
     double x, y;
 };
-
 
 int
 main (int argc, char *argv[])
@@ -134,6 +134,7 @@ main (int argc, char *argv[])
    *  Setup  *
    ***********/
 
+  // read transmission information of the interferer
   std::ifstream inputFile(transmitInputFile);
 	std::map<std::string, std::vector<double>> transmissionTimes;
 	int device;
@@ -171,6 +172,7 @@ main (int argc, char *argv[])
 
 	inputFile.close();
 
+  // read the position information of the interferers
 	std::vector<Device> devices;
     std::ifstream infile(positionFile);
     while (getline(infile, line)) {
@@ -571,6 +573,3 @@ main (int argc, char *argv[])
 
   return 0;
 }
-
-// eliminate the checking before transmission
-// 1 gateway independent of the other one

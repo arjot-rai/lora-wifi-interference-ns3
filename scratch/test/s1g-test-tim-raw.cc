@@ -1252,7 +1252,7 @@ int main(int argc, char *argv[]) {
 
 	wifiStaNode.Create(config.Nsta);
 	wifiApNode.Create(1);
-	interfererNode.Create(transmissionTimes.size() + 1); //one to send, one to receive (to see if there is anything going over the channel)
+	interfererNode.Create(transmissionTimes.size() + 1); // plus one to receive
 
 	YansWifiChannelHelper channelBuilder = YansWifiChannelHelper();
 	channelBuilder.AddPropagationLoss("ns3::LogDistancePropagationLossModel",
@@ -1393,6 +1393,7 @@ int main(int argc, char *argv[]) {
 	mobilityAp.SetMobilityModel("ns3::ConstantPositionMobilityModel");
 	mobilityAp.Install(wifiApNode);
 
+	// setup positions for interferers
 	MobilityHelper mobilityInterferer;
 	Ptr<ListPositionAllocator> positionAllocInterferer = CreateObject<
 			ListPositionAllocator>();
@@ -1505,8 +1506,6 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 		std::cout << "AP node, position = " << apposition << std::endl;
-		std::cout << "Interferer node 0, position = " << interfererNode.Get(0)->GetObject<MobilityModel>()->GetPosition() << std::endl;
-		std::cout << "Interferer node 1, position = " << interfererNode.Get(1)->GetObject<MobilityModel>()->GetPosition() << std::endl;
 	}
 
 	/*Print of the state of the stations*/
@@ -1596,7 +1595,6 @@ int main(int argc, char *argv[]) {
 		// ouput stats on interfering packets
 		std::cout << "Interferer packets received: " << DynamicCast<UdpServer>(serverAppI.Get(0))->GetReceived() << std::endl;
 		std::cout << "Interferer packets lost: " << DynamicCast<UdpServer>(serverAppI.Get(0))->GetLost() << std::endl;
-		std::cout << config.interfererPacketSize;
 	}
 	cout << "total packet loss % "
 			<< 100 - 100. * totalPacketsEchoed / totalSentPackets << endl;
