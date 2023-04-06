@@ -48,7 +48,7 @@ UdpClient::GetTypeId (void)
     .AddConstructor<UdpClient> ()
     .AddAttribute ("MaxPackets",
                    "The maximum number of packets the application will send",
-                   UintegerValue (100),
+                   UintegerValue (100000000),
                    MakeUintegerAccessor (&UdpClient::m_count),
                    MakeUintegerChecker<uint32_t> ())
     .AddAttribute ("Interval",
@@ -187,7 +187,8 @@ UdpClient::Send (void)
       NS_LOG_INFO ("Error while sending " << m_size << " bytes to "
                                           << peerAddressStringStream.str ());
     }
-
+NS_LOG_INFO ("sent " << m_sent << " count "
+                                    << m_count << " " << m_interval);
   if (m_sent < m_count)
     {
       m_sendEvent = Simulator::Schedule (m_interval, &UdpClient::Send, this);

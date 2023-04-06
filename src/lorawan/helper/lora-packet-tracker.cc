@@ -135,9 +135,8 @@ LoraPacketTracker::PacketReceptionCallback (Ptr<Packet const> packet, uint32_t g
 {
   if (IsUplink (packet))
     {
-      // Remove the successfully received packet from the list of sent ones
-      // NS_LOG_INFO ("PHY packet " << packet
-                                  
+      // // Remove the successfully received packet from the list of sent ones
+      // NS_LOG_INFO (Simulator::Now().GetSeconds() << " PHY packet " << packet
       //                            << " was successfully received at gateway "
       //                            << gwId);
 
@@ -153,7 +152,7 @@ LoraPacketTracker::InterferenceCallback (Ptr<Packet const> packet, uint32_t gwId
 {
   if (IsUplink (packet))
     {
-      // NS_LOG_INFO ("PHY packet " << packet
+      // NS_LOG_INFO (Simulator::Now().GetSeconds() << " PHY packet " << packet
       //                            << " was interfered at gateway "
       //                            << gwId);
 
@@ -169,9 +168,9 @@ LoraPacketTracker::NoMoreReceiversCallback (Ptr<Packet const> packet, uint32_t g
 {
   if (IsUplink (packet))
     {
-      // NS_LOG_INFO ("PHY packet " << packet
+      // NS_LOG_INFO (Simulator::Now().GetSeconds() << " PHY packet " << packet
       //                            << " was lost because no more receivers at gateway "
-      //                            << gwId);
+                                //  << gwId);
       std::map<Ptr<Packet const>, PacketStatus>::iterator it = m_packetTracker.find (packet);
       if(it != m_packetTracker.end())
         (*it).second.outcomes.insert (std::pair<int, enum PhyPacketOutcome> (gwId,
@@ -184,7 +183,7 @@ LoraPacketTracker::UnderSensitivityCallback (Ptr<Packet const> packet, uint32_t 
 {
   if (IsUplink (packet))
     {
-      // NS_LOG_INFO ("PHY packet " << packet
+      // NS_LOG_INFO (Simulator::Now().GetSeconds() << " PHY packet " << packet
       //                            << " was lost because under sensitivity at gateway "
       //                            << gwId);
 

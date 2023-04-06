@@ -163,32 +163,35 @@ UdpEchoServer::HandleRead (Ptr<Socket> socket)
         {
           NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server=" << myaddr.str() << " received " << packet->GetSize () << " bytes from " <<
                        InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
-                       InetSocketAddress::ConvertFrom (from).GetPort ());
+                       InetSocketAddress::ConvertFrom (from).GetPort ()<< " uid:" << packet->GetUid());
         }
       else if (Inet6SocketAddress::IsMatchingType (from))
         {
           NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server received " << packet->GetSize () << " bytes from " <<
                        Inet6SocketAddress::ConvertFrom (from).GetIpv6 () << " port " <<
-                       Inet6SocketAddress::ConvertFrom (from).GetPort ());
+                       Inet6SocketAddress::ConvertFrom (from).GetPort () << " uid:" << packet->GetUid());
+        }
+        else{
+          NS_LOG_INFO("LOST2");
         }
       packet->RemoveAllPacketTags ();
       packet->RemoveAllByteTags ();
 
-      NS_LOG_LOGIC ("Echoing packet");
-      socket->SendTo (packet, 0, from);
+      // NS_LOG_LOGIC ("Echoing packet");
+      // socket->SendTo (packet, 0, from);
 
-      if (InetSocketAddress::IsMatchingType (from))
-        {
-    	  NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server=" << myaddr.str() << " sent " << packet->GetSize () << " bytes to " <<
-    			  InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
-                       InetSocketAddress::ConvertFrom (from).GetPort ());
-        }
-      else if (Inet6SocketAddress::IsMatchingType (from))
-        {
-          NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server sent " << packet->GetSize () << " bytes to " <<
-                       Inet6SocketAddress::ConvertFrom (from).GetIpv6 () << " port " <<
-                       Inet6SocketAddress::ConvertFrom (from).GetPort ());
-        }
+      // if (InetSocketAddress::IsMatchingType (from))
+      //   {
+    	//   NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server=" << myaddr.str() << " sent " << packet->GetSize () << " bytes to " <<
+    	// 		  InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
+      //                  InetSocketAddress::ConvertFrom (from).GetPort ());
+      //   }
+      // else if (Inet6SocketAddress::IsMatchingType (from))
+      //   {
+      //     NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server sent " << packet->GetSize () << " bytes to " <<
+      //                  Inet6SocketAddress::ConvertFrom (from).GetIpv6 () << " port " <<
+      //                  Inet6SocketAddress::ConvertFrom (from).GetPort ());
+      //   }
     }
 }
 

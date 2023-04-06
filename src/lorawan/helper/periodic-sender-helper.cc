@@ -79,18 +79,13 @@ PeriodicSenderHelper::Install (NodeContainer c) const
     new_vector.push_back(*i);
   }
 
-  std::random_device rd;
-  std::mt19937 g(rd());
+  // std::random_device rd;
+  // std::mt19937 g(rd());
 
-  std::shuffle(new_vector.begin(), new_vector.end(), g);
+  // std::shuffle(new_vector.begin(), new_vector.end(), g);
   for (auto i : new_vector) {
       apps.Add (InstallPriv (i));
   }
-
-  // for (newVector.Iterator i = c.End (); i != c.Begin (); --i)
-  //   {
-  //     apps.Add (InstallPriv (*i));
-  //   }
 
   return apps;
 }

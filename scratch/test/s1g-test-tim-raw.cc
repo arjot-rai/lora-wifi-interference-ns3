@@ -550,6 +550,7 @@ string getWifiMode(string dataMode) {
 void OnAPPhyRxDrop(std::string context, Ptr<const Packet> packet,
 		DropReason reason) {
 	// THIS REQUIRES PACKET METADATA ENABLE!
+	NS_LOG_INFO("lost");
 	auto pCopy = packet->Copy();
 	auto it = pCopy->BeginItem();
 	while (it.HasNext()) {
@@ -679,10 +680,11 @@ void udpPacketReceivedAtServer(Ptr<const Packet> packet, Address from) { //works
 			InetSocketAddress::ConvertFrom(from).GetIpv4());
 	if (staId != -1 && staId != 1000)
 		nodes[staId]->OnUdpPacketReceivedAtAP(packet);
-	else if (staId == -1)
-		cout << "*** Node could not be determined from received packet at AP "
-				<< endl;
-	else cout << "Received interferer packet" << endl;
+	// else if (staId == -1)
+	// 	break;
+	// 	// cout << "*** Node could not be determined from received packet at AP "
+	// 	// 		<< endl;
+	// else cout << "Received interferer packet" << endl;
 }
 
 void tcpPacketReceivedAtServer(Ptr<const Packet> packet, Address from) {
@@ -1163,13 +1165,15 @@ struct Device {
 
 
 int main(int argc, char *argv[]) {
-	LogComponentEnable ("UdpServer", LOG_INFO);
+	// LogComponentEnable ("UdpServer", LOG_INFO);
+	// LogComponentEnable ("UdpClient", LOG_INFO);
 	LogComponentEnable ("UdpEchoServerApplication", LOG_INFO);
 	LogComponentEnable ("UdpEchoClientApplication", LOG_INFO);
+	// LogComponentEnable ("WifiPhy", LOG_INFO);
 
-	//LogComponentEnable ("ApWifiMac", LOG_DEBUG);
-	//LogComponentEnable ("StaWifiMac", LOG_DEBUG);
-	//LogComponentEnable ("EdcaTxopN", LOG_DEBUG);
+	// LogComponentEnable ("ApWifiMac", LOG_DEBUG);
+	// LogComponentEnable ("StaWifiMac", LOG_DEBUG);
+	// LogComponentEnable ("YansWifiChannel", LOG_ALL);F
 
 	bool OutputPosition = true;
 	config = Configuration(argc, argv);
@@ -1329,13 +1333,16 @@ int main(int argc, char *argv[]) {
 	// set it to zero; otherwise, gain will be added
 	wifiPhy.Set ("RxGain", DoubleValue (0) ); 
 	// ns-3 supports RadioTap and Prism tracing extensions for 802.11b
-	wifiPhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11_RADIO); 
+	// wifiPhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11_RADIO); 
 	
 	// set transmission power to large value
-	wifiPhy.Set ("TxPowerStart", DoubleValue (20) ); 
-	wifiPhy.Set ("TxPowerEnd", DoubleValue (20) ); 
+	wifiPhy.Set("TxGain", DoubleValue(3.0));
+	// wifiPhy.Set("RxGain", DoubleValue(3.0));
+	wifiPhy.Set ("TxPowerStart", DoubleValue (550) ); 
+	wifiPhy.Set ("TxPowerEnd", DoubleValue (550) ); 
 	wifiPhy.Set ("TxPowerLevels", UintegerValue (1) ); 
-	
+	// wifiPhy.Set("RxNoiseFigure", DoubleValue(6.8));
+
 	// connect to existing channel 
 	wifiPhy.SetChannel (channel);
 
@@ -1359,21 +1366,21 @@ int main(int argc, char *argv[]) {
         // NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, c);
 	interfererDevice = wifiI.Install(wifiPhy, wifiMac, interfererNode);
 	// make sure transmitting node doesn't back off
-	// wifiPhy.Set ("EnergyDetectionThreshold", DoubleValue (0.0) );
+	wifiPhy.Set ("EnergyDetectionThreshold", DoubleValue (1000) );
 	// interfererDevice.Add(wifiI.Install(wifiPhy, wifiMac, interfererNode.Get(0)));
     
-	Config::Set(
-			"/NodeList/*/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/BE_EdcaTxopN/Queue/MaxPacketNumber",
-			UintegerValue(10));
-	Config::Set(
-			"/NodeList/*/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/BE_EdcaTxopN/Queue/MaxDelay",
-			TimeValue(NanoSeconds(6000000000000)));
-	std::ostringstream oss;
-	oss << "/NodeList/" << wifiApNode.Get(0)->GetId()
-			<< "/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/$ns3::ApWifiMac/";
-	Config::ConnectWithoutContext(oss.str() + "RpsIndex", MakeCallback(&RpsIndexTrace));
-	Config::ConnectWithoutContext(oss.str() + "RawGroup", MakeCallback(&RawGroupTrace));
-	Config::ConnectWithoutContext(oss.str() + "RawSlot", MakeCallback(&RawSlotTrace));
+	// Config::Set(
+	// 		"/NodeList/*/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/BE_EdcaTxopN/Queue/MaxPacketNumber",
+	// 		UintegerValue(10));
+	// Config::Set(
+	// 		"/NodeList/*/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/BE_EdcaTxopN/Queue/MaxDelay",
+	// 		TimeValue(NanoSeconds(6000000000000)));
+	// std::ostringstream oss;
+	// oss << "/NodeList/" << wifiApNode.Get(0)->GetId()
+	// 		<< "/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/$ns3::ApWifiMac/";
+	// Config::ConnectWithoutContext(oss.str() + "RpsIndex", MakeCallback(&RpsIndexTrace));
+	// Config::ConnectWithoutContext(oss.str() + "RawGroup", MakeCallback(&RawGroupTrace));
+	// Config::ConnectWithoutContext(oss.str() + "RawSlot", MakeCallback(&RawSlotTrace));
 
 	// mobility.
 	MobilityHelper mobility;
@@ -1398,7 +1405,7 @@ int main(int argc, char *argv[]) {
 	Ptr<ListPositionAllocator> positionAllocInterferer = CreateObject<
 			ListPositionAllocator>();
 	positionAllocInterferer->Add(Vector(10, 10, 0.0));
-
+     
 	for (int i = 0; i < transmissionTimes.size(); i++) {
         Vector pos(devices[i].x, devices[i].y, 0);
 		positionAllocInterferer->Add(pos);
@@ -1428,19 +1435,20 @@ int main(int argc, char *argv[]) {
 	// clientHelperI.SetAttribute("PacketSize", UintegerValue(1024));
 	// ApplicationContainer interfererApp = clientHelperI.Install(interfererNode.Get(0));
 	// interfererApp.Start(Seconds(1));
-	UdpClientHelper client(interfererInterface.GetAddress(0), 9);
-	client.SetAttribute("PacketSize", UintegerValue(config.interfererPacketSize));
+
 	for (const auto& [device, times] : transmissionTimes) {
+		UdpClientHelper client(interfererInterface.GetAddress(0), 9);
+		client.SetAttribute("PacketSize", UintegerValue(config.interfererPacketSize));
 		if(times.size() > 1) {
 			client.SetAttribute("Interval", TimeValue(Seconds(times[1] - times[0])));
 		}
 		else {
-			client.SetAttribute("Interval", TimeValue(Seconds(10000)));
+			client.SetAttribute("Interval", TimeValue(Seconds(50)));
 		}
-		// client.SetAttribute("Interval", TimeValue(MilliSeconds(20)));
-		cout << "\n" << device << " " << interfererNode.GetN();
+		// client.SetAttribute("Interval", TimeValue(MilliSeconds(50)));
 		ApplicationContainer interfererApp = client.Install(interfererNode.Get(device));
 		interfererApp.Start(Seconds(times[0]));
+		cout << device << " " << interfererInterface.GetAddress(device) << " start: " << times[0] << " " << Seconds(times[0]) << std::endl;
 	}
 
 	// and a receiver
@@ -1450,7 +1458,7 @@ int main(int argc, char *argv[]) {
 			MakeCallback(&udpPacketReceivedAtServer));
 	serverAppI.Start(Seconds(0));
 
-	//trace association
+	// trace association
 	std::cout << "Configuring trace sources..." << std::endl;
 	for (uint16_t kk = 0; kk < config.Nsta; kk++) {
 		std::ostringstream STA;
@@ -1552,7 +1560,7 @@ int main(int argc, char *argv[]) {
 				<< " ; delivered: " << stats.get(i).NumberOfSuccessfulPackets
 				<< " ; echoed: " << stats.get(i).NumberOfSuccessfulRoundtripPackets
 				<< "; packetloss: "
-				<< stats.get(i).GetPacketLoss(config.trafficType) << endl;
+				<< 100*(stats.get(i).NumberOfSuccessfulPackets / stats.get(i).NumberOfSentPackets) << endl;
 	}
 
 	if (config.trafficType == "udp")
@@ -1578,9 +1586,9 @@ int main(int argc, char *argv[]) {
 		dlThroughput = totalPacketsEchoed * config.payloadSize * 8 / (config.simulationTime * 1000000.0);
 		cout << "totalPacketsSent " << totalSentPackets << endl;
 		cout << "totalPacketsDelivered " << totalSuccessfulPackets << endl;
-		cout << "totalPacketsEchoed " << totalPacketsEchoed << endl;
+		// cout << "totalPacketsEchoed " << totalPacketsEchoed << endl;
 		cout << "UL packets lost " << totalSentPackets - totalSuccessfulPackets << endl;
-		cout << "DL packets lost " << totalSuccessfulPackets - totalPacketsEchoed << endl;
+		// cout << "DL packets lost " << totalSuccessfulPackets - totalPacketsEchoed << endl;
 		cout << "Total packets lost " << totalSentPackets - totalPacketsEchoed << endl;
 
 		/*cout << "uplink throughput Mbit/s " << ulThroughput << endl;
@@ -1595,9 +1603,24 @@ int main(int argc, char *argv[]) {
 		// ouput stats on interfering packets
 		std::cout << "Interferer packets received: " << DynamicCast<UdpServer>(serverAppI.Get(0))->GetReceived() << std::endl;
 		std::cout << "Interferer packets lost: " << DynamicCast<UdpServer>(serverAppI.Get(0))->GetLost() << std::endl;
+		std::cout << "devices: " << channel->GetNDevices();
 	}
+
+	int j = 0;
+	while (j < config.Nsta) {
+		Ptr<MobilityModel> mobility = wifiStaNode.Get(j)->GetObject<MobilityModel>();
+		Vector position = mobility->GetPosition();
+		nodes[j]->x = position.x;
+		nodes[j]->y = position.y;
+		std::cout << "Sta node#" << j << ", " << "position = " << position
+				<< std::endl;
+		dist[j] = mobility->GetDistanceFrom(
+				wifiApNode.Get(0)->GetObject<MobilityModel>());
+		j++;
+	}
+	std::cout << "AP node, position = " << apposition << std::endl;
 	cout << "total packet loss % "
-			<< 100 - 100. * totalPacketsEchoed / totalSentPackets << endl;
+			<< 100 - 100. * totalSuccessfulPackets / totalSentPackets << endl;
 	Simulator::Destroy();
 
 	ofstream risultati;

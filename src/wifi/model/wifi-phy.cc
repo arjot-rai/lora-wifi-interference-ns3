@@ -839,6 +839,8 @@ WifiPhy::NotifyTxEnd (Ptr<const Packet> packet)
 void
 WifiPhy::NotifyTxDrop (Ptr<const Packet> packet, DropReason reason)
 {
+  // NS_LOG_INFO("lost: " << Simulator::Now ().GetSeconds () << " reason: " << reason);
+  // NS_LOG_INFO("ARJOT");
   m_phyTxDropTrace (packet);
   m_phyTxDropWithDropReasonTrace (packet, reason);
 }
@@ -858,6 +860,7 @@ WifiPhy::NotifyRxEnd (Ptr<const Packet> packet)
 void
 WifiPhy::NotifyRxDrop (Ptr<const Packet> packet, DropReason reason)
 {
+  // NS_LOG_INFO("lost: " << Simulator::Now ().GetSeconds () << " reason: " << reason);
   m_phyRxDropTrace (packet);
   m_phyRxDropWithDropReasonTrace(packet, reason);
 }

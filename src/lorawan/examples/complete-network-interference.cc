@@ -39,6 +39,7 @@
 #include <string>
 #include <map>
 #include <sstream>
+#include "ns3/rng-seed-manager.h"
 
 using namespace ns3;
 using namespace lorawan;
@@ -48,7 +49,7 @@ NS_LOG_COMPONENT_DEFINE ("ComplexLorawanNetworkExample");
 // Network settings
 int nDevices = 64;
 int nGateways = 1;
-double radius = 1000;
+double radius = 3000;
 double simulationTime = 86400;
 
 // Channel model
@@ -94,6 +95,7 @@ main (int argc, char *argv[])
   cmd.AddValue ("transmitInputFile", "transmitInputFile", transmitInputFile);
   cmd.AddValue ("interfererDevices", "interfererDevices", interfererDevices);
   cmd.AddValue ("interfererPacketSize", "interfererPacketSize", interfererPacketSize);
+  cmd.AddValue ("seed", "seed", seed);
   cmd.Parse (argc, argv);
 
   // Set up logging
@@ -133,6 +135,7 @@ main (int argc, char *argv[])
   /***********
    *  Setup  *
    ***********/
+	RngSeedManager::SetSeed(seed);
 
   // read transmission information of the interferer
   std::ifstream inputFile(transmitInputFile);

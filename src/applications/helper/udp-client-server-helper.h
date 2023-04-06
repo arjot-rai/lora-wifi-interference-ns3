@@ -145,6 +145,7 @@ public:
      * \returns the applications created, one application per input node.
      */
   ApplicationContainer Install (NodeContainer c);
+  ApplicationContainer Install (Ptr<Node> n);
 
 private:
   ObjectFactory m_factory; //!< Object factory.

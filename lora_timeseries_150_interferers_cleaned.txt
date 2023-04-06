@@ -1,0 +1,127 @@
+0.425722 PHY packet 0x7fffb959c0f0 was successfully received at gateway 64
+1.59019 PHY packet 0x7fffb964ac80 was successfully received at gateway 64
+2.19419 PHY packet 0x7fffb964aec0 was successfully received at gateway 64
+2.62882 PHY packet 0x7fffb964ba60 was successfully received at gateway 64
+2.73451 PHY packet 0x7fffb964c4f0 was successfully received at gateway 64
+3.46747 PHY packet 0x7fffb964d810 was successfully received at gateway 64
+4.40565 PHY packet 0x7fffb964e700 was successfully received at gateway 64
+5.53571 PHY packet 0x7fffb9638af0 was successfully received at gateway 64
+7.33255 PHY packet 0x7fffb9660530 was interfered at gateway 64
+8.21467 PHY packet 0x7fffb9686fb0 was interfered at gateway 64
+8.53622 PHY packet 0x7fffb96933d0 was successfully received at gateway 64
+8.80052 PHY packet 0x7fffb9693d70 was successfully received at gateway 64
+9.14736 PHY packet 0x7fffb9695420 was successfully received at gateway 64
+9.78405 PHY packet 0x7fffb9699980 was interfered at gateway 64
+11.2251 PHY packet 0x7fffb96bf130 was interfered at gateway 64
+12.5046 PHY packet 0x7fffb96dbe30 was interfered at gateway 64
+13.2354 PHY packet 0x7fffb96edfe0 was interfered at gateway 64
+13.3568 PHY packet 0x7fffb96f1ee0 was interfered at gateway 64
+13.4697 PHY packet 0x7fffb96f6ec0 was interfered at gateway 64
+13.5426 PHY packet 0x7fffb96f8e80 was successfully received at gateway 64
+13.649 PHY packet 0x7fffb96fa2c0 was interfered at gateway 64
+15.0562 PHY packet 0x7fffb97092a0 was interfered at gateway 64
+16.6633 PHY packet 0x7fffb97282e0 was successfully received at gateway 64
+16.8076 PHY packet 0x7fffb9728660 was successfully received at gateway 64
+16.9663 PHY packet 0x7fffb9728bd0 was successfully received at gateway 64
+17.0209 PHY packet 0x7fffb9728dd0 was interfered at gateway 64
+17.8973 PHY packet 0x7fffb9729c80 was successfully received at gateway 64
+19.8596 PHY packet 0x7fffb972e080 was interfered at gateway 64
+25.9168 PHY packet 0x7fffb97319c0 was successfully received at gateway 64
+26.8203 PHY packet 0x7fffb97323b0 was successfully received at gateway 64
+28.438 PHY packet 0x7fffb9733780 was successfully received at gateway 64
+29.0062 PHY packet 0x7fffb9733b80 was successfully received at gateway 64
+31.5066 PHY packet 0x7fffb9738ac0 was interfered at gateway 64
+31.7793 PHY packet 0x7fffb9739720 was successfully received at gateway 64
+32.169 PHY packet 0x7fffb9739c90 was interfered at gateway 64
+32.2416 PHY packet 0x7fffb9739f10 was interfered at gateway 64
+33.3885 PHY packet 0x7fffb973ae00 was successfully received at gateway 64
+34.1389 PHY packet 0x7fffb973b8f0 was successfully received at gateway 64
+35.6353 PHY packet 0x7fffb973d240 was interfered at gateway 64
+35.7746 PHY packet 0x7fffb973d740 was interfered at gateway 64
+35.8308 PHY packet 0x7fffb973d9c0 was interfered at gateway 64
+35.879 PHY packet 0x7fffb973dc40 was interfered at gateway 64
+36.2301 PHY packet 0x7fffb973e4c0 was interfered at gateway 64
+36.4685 PHY packet 0x7fffb973e9c0 was interfered at gateway 64
+36.927 PHY packet 0x7fffb973f040 was interfered at gateway 64
+40.8469 PHY packet 0x7fffb9746c80 was successfully received at gateway 64
+40.9678 PHY packet 0x7fffb9735820 was successfully received at gateway 64
+42.0113 PHY packet 0x7fffb972d2c0 was successfully received at gateway 64
+42.6585 PHY packet 0x7fffb9682970 was interfered at gateway 64
+42.7296 PHY packet 0x7fffb9712cb0 was interfered at gateway 64
+42.9773 PHY packet 0x7fffb967cbe0 was interfered at gateway 64
+43.4943 PHY packet 0x7fffb965bba0 was interfered at gateway 64
+44.0845 PHY packet 0x7fffb970e160 was successfully received at gateway 64
+45.2097 PHY packet 0x7fffb9714940 was successfully received at gateway 64
+45.4038 PHY packet 0x7fffb96a47f0 was successfully received at gateway 64
+46.7369 PHY packet 0x7fffb96b9580 was successfully received at gateway 64
+47.4425 PHY packet 0x7fffb96583a0 was successfully received at gateway 64
+47.4494 PHY packet 0x7fffb96590e0 was successfully received at gateway 64
+47.6324 PHY packet 0x7fffb96fc720 was successfully received at gateway 64
+48.5075 PHY packet 0x7fffb96e2f80 was successfully received at gateway 64
+48.6959 PHY packet 0x7fffb97017e0 was successfully received at gateway 64
+48.8636 PHY packet 0x7fffb964f4b0 was successfully received at gateway 64
+49.4645 PHY packet 0x7fffb96a0930 was successfully received at gateway 64
+50.1137 PHY packet 0x7fffb96a9070 was successfully received at gateway 64
+50.4257 PHY packet 0x7fffb970f420 was successfully received at gateway 64
+51.5902 PHY packet 0x7fffb971abe0 was successfully received at gateway 64
+52.1942 PHY packet 0x7fffb966be10 was interfered at gateway 64
+52.6288 PHY packet 0x7fffb96c8cb0 was interfered at gateway 64
+52.7345 PHY packet 0x7fffb971e390 was interfered at gateway 64
+53.4675 PHY packet 0x7fffb97455b0 was successfully received at gateway 64
+54.4057 PHY packet 0x7fffb96e6c10 was interfered at gateway 64
+55.5357 PHY packet 0x7fffb9726aa0 was interfered at gateway 64
+57.3325 PHY packet 0x7fffb9742b70 was interfered at gateway 64
+58.2147 PHY packet 0x7fffb970fde0 was interfered at gateway 64
+58.5362 PHY packet 0x7fffb967a350 was interfered at gateway 64
+58.8005 PHY packet 0x7fffb9726230 was interfered at gateway 64
+59.1474 PHY packet 0x7fffb964a8e0 was interfered at gateway 64
+59.784 PHY packet 0x7fffb96681b0 was interfered at gateway 64
+61.2251 PHY packet 0x7fffb975e860 was interfered at gateway 64
+62.5046 PHY packet 0x7fffb975f970 was successfully received at gateway 64
+63.2354 PHY packet 0x7fffb97601e0 was successfully received at gateway 64
+63.3568 PHY packet 0x7fffb96b7340 was successfully received at gateway 64
+63.4697 PHY packet 0x7fffb9760760 was interfered at gateway 64
+63.5426 PHY packet 0x7fffb9760ac0 was successfully received at gateway 64
+63.649 PHY packet 0x7fffb9760da0 was interfered at gateway 64
+65.0562 PHY packet 0x7fffb97632d0 was successfully received at gateway 64
+66.6633 PHY packet 0x7fffb97648b0 was successfully received at gateway 64
+66.8076 PHY packet 0x7fffb9764b30 was successfully received at gateway 64
+66.9663 PHY packet 0x7fffb9764ea0 was successfully received at gateway 64
+67.0209 PHY packet 0x7fffb97650a0 was successfully received at gateway 64
+67.8973 PHY packet 0x7fffb9765cb0 was successfully received at gateway 64
+69.8596 PHY packet 0x7fffb9766d10 was successfully received at gateway 64
+75.9168 PHY packet 0x7fffb9658620 was successfully received at gateway 64
+76.8203 PHY packet 0x7fffb96e59b0 was interfered at gateway 64
+78.438 PHY packet 0x7fffb9742e70 was interfered at gateway 64
+79.0062 PHY packet 0x7fffb96e8ad0 was successfully received at gateway 64
+81.5066 PHY packet 0x7fffb975c650 was interfered at gateway 64
+81.7793 PHY packet 0x7fffb9769d10 was successfully received at gateway 64
+82.169 PHY packet 0x7fffb976fac0 was interfered at gateway 64
+82.2416 PHY packet 0x7fffb976fd40 was interfered at gateway 64
+83.3885 PHY packet 0x7fffb977a770 was interfered at gateway 64
+84.1389 PHY packet 0x7fffb977c350 was interfered at gateway 64
+85.6353 PHY packet 0x7fffb977d5d0 was interfered at gateway 64
+85.7746 PHY packet 0x7fffb977da50 was interfered at gateway 64
+85.8308 PHY packet 0x7fffb977dc50 was successfully received at gateway 64
+85.879 PHY packet 0x7fffb977de50 was interfered at gateway 64
+86.2301 PHY packet 0x7fffb977e7c0 was interfered at gateway 64
+86.4685 PHY packet 0x7fffb977ebc0 was interfered at gateway 64
+86.927 PHY packet 0x7fffb977f0c0 was successfully received at gateway 64
+90.8469 PHY packet 0x7fffb9781490 was successfully received at gateway 64
+90.9678 PHY packet 0x7fffb9781790 was successfully received at gateway 64
+92.0113 PHY packet 0x7fffb9782250 was successfully received at gateway 64
+92.6585 PHY packet 0x7fffb9782a40 was successfully received at gateway 64
+92.7296 PHY packet 0x7fffb9782fc0 was successfully received at gateway 64
+92.9773 PHY packet 0x7fffb97832e0 was interfered at gateway 64
+93.4943 PHY packet 0x7fffb9783a90 was successfully received at gateway 64
+94.0845 PHY packet 0x7fffb9784270 was successfully received at gateway 64
+95.2097 PHY packet 0x7fffb9785250 was interfered at gateway 64
+95.4038 PHY packet 0x7fffb9785550 was successfully received at gateway 64
+96.7369 PHY packet 0x7fffb96ff5e0 was interfered at gateway 64
+97.4425 PHY packet 0x7fffb9787330 was interfered at gateway 64
+97.4494 PHY packet 0x7fffb9786fb0 was interfered at gateway 64
+97.6324 PHY packet 0x7fffb97875b0 was successfully received at gateway 64
+98.5075 PHY packet 0x7fffb97881a0 was interfered at gateway 64
+98.6959 PHY packet 0x7fffb97884a0 was interfered at gateway 64
+98.8636 PHY packet 0x7fffb9788810 was interfered at gateway 64
+99.4645 PHY packet 0x7fffb977a220 was interfered at gateway 64

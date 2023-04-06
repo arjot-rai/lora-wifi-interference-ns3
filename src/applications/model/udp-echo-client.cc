@@ -337,14 +337,16 @@ UdpEchoClient::Send (void)
 	  std::stringstream myaddr;
 	  myaddr << Ipv4Address::ConvertFrom (iAddr.GetLocal());
       NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s client=" << myaddr.str() << " sent " << m_size << " bytes to " <<
-                   Ipv4Address::ConvertFrom (m_peerAddress) << " port " << m_peerPort);
+                   Ipv4Address::ConvertFrom (m_peerAddress) << " port " << m_peerPort << " uid:" << p->GetUid());
     }
   else if (Ipv6Address::IsMatchingType (m_peerAddress))
     {
       NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s client sent " << m_size << " bytes to " <<
-                   Ipv6Address::ConvertFrom (m_peerAddress) << " port " << m_peerPort);
+                   Ipv6Address::ConvertFrom (m_peerAddress) << " port " << m_peerPort << " uid:" << p->GetUid());
     }
-
+  else {
+    NS_LOG_INFO("LOST");
+  }
   if (m_sent < m_count) 
     {
       double deviation = m_rv->GetValue(-m_intervalDeviation.GetMicroSeconds(), m_intervalDeviation.GetMicroSeconds());

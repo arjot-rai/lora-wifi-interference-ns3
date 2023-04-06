@@ -109,6 +109,20 @@ UdpClientHelper::Install (NodeContainer c)
   return apps;
 }
 
+ApplicationContainer
+UdpClientHelper::Install (Ptr<Node> node)
+{
+  ApplicationContainer apps;
+
+  // Ptr<Node> node = *n;
+  Ptr<UdpClient> client = m_factory.Create<UdpClient> ();
+  node->AddApplication (client);
+  apps.Add (client);
+    
+  return apps;
+}
+
+
 UdpTraceClientHelper::UdpTraceClientHelper ()
 {
 }

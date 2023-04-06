@@ -83,7 +83,7 @@ void NodeEntry::OnPhyTxEnd(std::string context, Ptr<const Packet> packet) {
 void NodeEntry::OnPhyTxDrop(std::string context, Ptr<const Packet> packet, DropReason reason) {
 	if(showLog) cout << "[" << this->aId << "] " << "Tx Dropped " << packet->GetUid()
 					<< endl;
-
+	NS_LOG_INFO("LOST");
 	if (txMap.find(packet->GetUid()) != txMap.end()) {
 		Time oldTime = txMap[packet->GetUid()];
 		txMap.erase(packet->GetUid());
@@ -192,6 +192,7 @@ void NodeEntry::OnEndOfReceive(Ptr<const Packet> packet) {
 void NodeEntry::OnPhyRxDrop(std::string context, Ptr<const Packet> packet,
 		DropReason reason) {
 	this->OnEndOfReceive(packet);
+	NS_LOG_INFO("LOST");
 
 	// THIS REQUIRES PACKET METADATA ENABLE!
 	auto pCopy = packet->Copy();
